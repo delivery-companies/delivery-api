@@ -1,0 +1,64 @@
+<html lang="ar">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>فاتورة</title>
+    <style>
+      .receipt{ margin-top: 10px; position: relative; margin-bottom: 10px; } p{
+      margin: 10px 0 0; } .logo { width: 70px; position: absolute; top: 5px;
+      left: 10px; } .receipt div{ margin-top: 6px; font-weight: bold; font-size:
+      14px; } .footer{ display: flex;justify-content: space-between;
+      align-items: end; } .footer div{ font-weight: lighter !important; }
+    </style>
+  </head>
+  <body style="direction: rtl">
+    {{#each receipts}}
+      <div class="receipt">
+        <img src="{{client.companyLogo}}" class="logo" />
+        <p>{{branch.name}}</p>
+        <div>
+          <span>رقم الوصل :</span>
+          <span>{{receiptNumber}}</span>
+        </div>
+        {{#if (check store)}}
+          <div>
+            <span>اسم الصفحه :</span>
+            <span>{{store.name}}</span>
+          </div>
+        {{else}}
+          <div>
+            <span>اسم الصفحه :</span>
+          </div>
+        {{/if}}
+        <div>
+          <span>المحافظه :</span>
+        </div>
+        <div>
+          <span>المنطقه :</span>
+        </div>
+        <div>
+          <span>التاريخ :</span>
+        </div>
+        <div>
+          <span>التفاصيل :</span>
+        </div>
+        <div>
+          <span>الملاحظات :</span>
+          <span style="font-weight: 200;font-size:11px">{{notes}}</span>
+        </div>
+        <div class="footer">
+          <div>
+            <span style="display: block;">ملاحظات مهمه</span>
+            <span style="display: block;">* الشركة مسئولة عن توصيل الطلبات فقط</span>
+          </div>
+          <div style="float: left;margin-top: 0px;">
+            <img src="{{QRCode this}}" />
+          </div>
+        </div>
+      </div>
+      {{#unless @last}}
+        <div style="page-break-before: always;"></div>
+      {{/unless}}
+    {{/each}}
+  </body>
+</html>

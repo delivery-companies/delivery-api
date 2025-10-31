@@ -1,0 +1,52 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"display": "Node 20",
+	"_version": "22.8.0",
+	"compilerOptions": {
+		/* Base Options: */
+		"esModuleInterop": true, // Required for `import` statements
+		"skipLibCheck": true, // Skip type checking of all declaration files
+		"target": "es2022", // The version of ECMAScript that the code should be transpiled to
+		// "allowJs": true, // Allow JavaScript files to be compiled
+		"resolveJsonModule": true, // Allow importing JSON files
+		"moduleDetection": "force", // Force the module system to be used
+		"isolatedModules": true, // Ensure that each file is transpiled in its own scope
+		// This needs type to be module in package.json
+		// "verbatimModuleSyntax": true, // Forces to use import type and export type
+		/* Strictness */
+		"strict": true, // Enable all strict type-checking options
+		"noImplicitAny": true, // Raise error on expressions and declarations with an implied 'any' type
+		"noFallthroughCasesInSwitch": true, // Report errors for fallthrough cases in switch statements
+		"noImplicitOverride": true, // Ensure that the override keyword is used when overriding a method
+		"noImplicitReturns": true, // Report error on functions without a return statement
+		"forceConsistentCasingInFileNames": true, // Disallow inconsistently-cased references to the same file
+		"allowUnusedLabels": false, // Allow unused labels in the code
+		"allowUnreachableCode": false, // Disallow unreachable code after a return, throw, continue, or break statement
+		"noUnusedLocals": true, // Report errors on unused locals
+		"noUnusedParameters": true, // Report errors on unused parameters
+		"checkJs": true, // Enable type checking in JavaScript files
+		// "noPropertyAccessFromIndexSignature": true, // Disallow property access from index signatures
+		// "noUncheckedIndexedAccess": true, // Disallow unchecked access to indexed properties
+		// "exactOptionalPropertyTypes": true, // Disallow excess property checks for object literals
+
+		/* If transpiling with TypeScript: */
+		"moduleResolution": "NodeNext", // Specify module resolution strategy: 'node' (Node.js) or 'classic' (TypeScript pre-1.6)
+		"module": "NodeNext", // Specify module code generation: 'commonjs', 'amd', 'system', 'umd', 'es6', or 'es2015'
+		"rootDir": "./src", // Specify the root directory of input files
+		"outDir": "./build", // Redirect output structure to the directory
+		"sourceMap": true, // Create source map files for emitted JavaScript files
+		// "allowImportingTsExtensions": true, // Allow importing of TypeScript files
+
+		/* If your code doesn't run in the DOM: */
+		"lib": ["es2022"], // Specify library files to be included in the compilation
+
+		/* Other: */
+		"noErrorTruncation": true // Disable truncation of error messages
+		// "baseUrl": "./src", // Base directory to resolve non-absolute module names
+		// "paths": {
+		// 	"@/*": ["*"] // Map paths to base directory
+		// }
+	},
+	"include": ["./src"],
+	"exclude": ["node_modules", "spec", "build", "production"]
+}

@@ -1,0 +1,52 @@
+{
+    "$schema": "https://biomejs.dev/schemas/1.8.0/schema.json",
+    "organizeImports": {
+        "enabled": true
+    },
+    "formatter": {
+        "enabled": true,
+        "formatWithErrors": false,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 110,
+        "lineEnding": "crlf",
+        "ignore": []
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "style": {
+                "useCollapsedElseIf": "warn",
+                "useForOf": "error"
+            },
+            "suspicious": {
+                "noConsoleLog": "warn",
+                "useAwait": "error"
+            },
+            "complexity": {
+                "noUselessTernary": "error"
+            },
+            "correctness": {
+                "noInvalidUseBeforeDeclaration": "error",
+                "noUnusedImports": "error"
+            },
+            "nursery": {}
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "trailingCommas": "none",
+            "lineEnding": "lf"
+        }
+    },
+    "json": {
+        "parser": {
+            "allowTrailingCommas": false
+        }
+    },
+    "files": {
+        "ignore": ["node_modules", "src/database/migrations", "build", "production"],
+        "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx", "src/**/*.json"]
+    }
+}

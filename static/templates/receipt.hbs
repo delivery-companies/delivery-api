@@ -1,0 +1,96 @@
+<html lang="ar" dir="rtl">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>فاتورة</title>
+    <link rel="stylesheet" href="../styles/receiptStyle.css" />
+  </head>
+
+  <body>
+    {{#each orders}}
+      <section class="receipt-container">
+        <header>
+          <table>
+            <tr>
+              <td><img src="{{company.logo}}" /></td>
+              <td></td>
+              <td>
+                {{!-- {{{}}} is used to escape the value of the variable and not to escape the html tags --}}
+                {{{BarCode id}}}
+              </td>
+              <td><img src="{{QRCode this}}" /></td>
+            </tr>
+          </table>
+        </header>
+        <main>
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الوصل</th>
+                <th>اسم العميل</th>
+                <th>هاتف العميل</th>
+                <th>التاريخ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{{receiptNumber}}</td>
+                <td>{{client.name}}</td>
+                <td>{{client.phone}}</td>
+                <td>{{date createdAt}}</td>
+              </tr>
+            </tbody>
+          </table>
+          <table>
+            <thead>
+              <tr>
+                <th>اسم الزبون</th>
+                <th>هاتف الزبون</th>
+                <th>العنوان</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{{recipientName}}</td>
+                <td>{{mapPhones recipientPhone}}</td>
+                <td>{{localizeGovernorate governorate}}
+                  -
+                  {{location.name}}
+                  -
+                  {{recipientAddress}}</td>
+              </tr>
+            </tbody>
+          </table>
+          <table>
+            <thead>
+              <tr>
+                <th>الكمية</th>
+                <th>النوع</th>
+                <th>المبلغ مع التوصيل</th>
+                <th>ملاحظات</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{{quantity}}</td>
+                <td></td>
+                <td>{{add totalCost deliveryCost}}</td>
+                <td>{{notes}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </main>
+        <footer>
+          <section style="white-space: pre-line;">
+            {{company.registrationText}}
+          </section>
+        </footer>
+      </section>
+      {{#unless @last}}
+        <div style="page-break-before: always;"></div>
+      {{/unless}}
+    {{/each}}
+  </body>
+
+</html>

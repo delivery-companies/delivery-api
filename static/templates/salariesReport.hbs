@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>تقرير رواتب</title>
+</head>
+
+<body class="px-20">
+	<header>
+		<table>
+			<tr>
+				<td>اسم الفرع: <span>{{}}</span></td>
+				<td class="title">تقرير رواتب</td>
+				<td rowspan="3"><img src="{{company.logo}}" /></td>
+			</tr>
+			<tr>
+				<td>التاريخ: <span>{{}}</span></td>
+				<td>الشهر: <span>{{}}</span></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td>عدد الموظفين: <span>{{}}</span></td>
+				<td></td>
+				<td></td>
+			</tr>
+		</table>
+	</header>
+	<main>
+		<table>
+			<thead>
+				<tr>
+					<th>#</th>
+					<th>الاسم</th>
+					<th>رقم الهاتف</th>
+					<th>الراتب الاساسي</th>
+					<th>المكافئات</th>
+					<th>العقوبات</th>
+					<th>الراتب الحالي</th>
+					<th>التوقيع</th>
+				</tr>
+			</thead>
+			<tbody>
+				{{#each employees}}
+				<tr>
+					<td class="nowrap">{{inc @index}}</td>
+					<td>{{}}</td>
+					<td>{{}}</td>
+					<td>{{}}</td>
+					<td>{{}}</td>
+					<td>{{}}</td>
+					<td>{{}}</td>
+					<td>{{}}</td>
+				</tr>
+				{{/each}}
+			</tbody>
+		</table>
+	</main>
+	<section class="watermark">{{}}</section>
+</body>
+
+</html>
