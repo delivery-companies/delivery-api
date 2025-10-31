@@ -202,8 +202,8 @@ model Branch {
   companyId           Int
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt
-  branchCLient        Float                       @default(1000)
-  branchOrder         Float                       @default(1000)
+  branchCLient        Float?                       @default(1000)
+  branchOrder         Float?                       @default(1000)
   automaticUpdate     AutomaticUpdate[]
   company             Company                    @relation(fields: [companyId], references: [id])
   branchReports       BranchReport[]

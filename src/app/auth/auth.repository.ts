@@ -1,24 +1,24 @@
-import {prisma} from "../../database/db";
-import type {UserSigninType} from "./auth.dto";
-import {userReform, userSelect} from "./auth.responses";
+import { prisma } from "../../database/db";
+import type { UserSigninType } from "./auth.dto";
+import { userReform, userSelect } from "./auth.responses";
 
 export class AuthRepository {
   async signin(user: UserSigninType) {
     const returnedUser = await prisma.user.findFirst({
       where: {
         username: user.username,
-        OR: [
-          {
-            employee: {
-              deleted: false,
-            },
-          },
-          {
-            client: {
-              deleted: false,
-            },
-          },
-        ],
+        // OR: [
+        //   {
+        //     employee: {
+        //       deleted: false,
+        //     },
+        //   },
+        //   {
+        //     client: {
+        //       deleted: false,
+        //     },
+        //   },
+        // ],
       },
       select: userSelect,
     });
