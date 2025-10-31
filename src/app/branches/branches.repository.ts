@@ -1,7 +1,7 @@
-import type {Governorate} from "@prisma/client";
-import {prisma} from "../../database/db";
-import type {BranchCreateType, BranchUpdateType} from "./branches.dto";
-import {branchSelect} from "./branches.responses";
+import type { Governorate } from "@prisma/client";
+import { prisma } from "../../database/db";
+import type { BranchCreateType, BranchUpdateType } from "./branches.dto";
+import { branchSelect } from "./branches.responses";
 
 export class BranchesRepository {
   async createBranch(companyID: number, data: BranchCreateType) {
@@ -9,8 +9,7 @@ export class BranchesRepository {
       data: {
         name: data.name,
         governorate: data.governorate,
-        branchCLient: data.branchCLient,
-        branchOrder: data.branchOrder,
+
         company: {
           connect: {
             id: companyID,
@@ -91,7 +90,7 @@ export class BranchesRepository {
     };
   }
 
-  async getBranch(data: {branchID: number}) {
+  async getBranch(data: { branchID: number }) {
     const branch = await prisma.branch.findUnique({
       where: {
         id: data.branchID,
@@ -101,7 +100,7 @@ export class BranchesRepository {
     return branch;
   }
 
-  async updateBranch(data: {branchID: number; branchData: BranchUpdateType}) {
+  async updateBranch(data: { branchID: number; branchData: BranchUpdateType }) {
     const branch = await prisma.branch.update({
       where: {
         id: data.branchID,
@@ -109,15 +108,13 @@ export class BranchesRepository {
       data: {
         name: data.branchData.name,
         governorate: data.branchData.governorate,
-        branchCLient: data.branchData.branchCLient,
-        branchOrder: data.branchData.branchOrder,
       },
       select: branchSelect,
     });
     return branch;
   }
 
-  async deleteBranch(data: {branchID: number}) {
+  async deleteBranch(data: { branchID: number }) {
     await prisma.branch.delete({
       where: {
         id: data.branchID,
@@ -126,7 +123,7 @@ export class BranchesRepository {
     return true;
   }
 
-  async getBranchManagerBranch(data: {branchManagerID: number}) {
+  async getBranchManagerBranch(data: { branchManagerID: number }) {
     const branch = await prisma.branch.findFirst({
       where: {
         employees: {
@@ -143,7 +140,7 @@ export class BranchesRepository {
     return branch;
   }
 
-  async getBranchByLocation(data: {locationID: number}) {
+  async getBranchByLocation(data: { locationID: number }) {
     const branch = await prisma.branch.findFirst({
       where: {
         locations: {

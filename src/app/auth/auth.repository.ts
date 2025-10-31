@@ -7,18 +7,18 @@ export class AuthRepository {
     const returnedUser = await prisma.user.findFirst({
       where: {
         username: user.username,
-        // OR: [
-        //   {
-        //     employee: {
-        //       deleted: false,
-        //     },
-        //   },
-        //   {
-        //     client: {
-        //       deleted: false,
-        //     },
-        //   },
-        // ],
+        OR: [
+          {
+            employee: {
+              deleted: false,
+            },
+          },
+          {
+            client: {
+              deleted: false,
+            },
+          },
+        ],
       },
       select: userSelect,
     });
