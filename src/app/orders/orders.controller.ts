@@ -15,12 +15,22 @@ import {
 } from "./orders.dto";
 import {OrdersService} from "./orders.service";
 import {EmployeesRepository} from "../employees/employees.repository";
-import {Governorate, OrderStatus, SecondaryStatus} from "@prisma/client";
+import {
+  Governorate,
+  OrderStatus,
+  Prisma,
+  SecondaryStatus,
+} from "@prisma/client";
 import {orderReform, orderSelect, OrderStatusData} from "./orders.responses";
 import {AppError} from "../../lib/AppError";
 import {OrdersRepository} from "./orders.repository";
 import {generateReceipts} from "./helpers/generateReceipts";
 import {governorateArabicNames} from "../locations/locations.repository";
+import {generateOrdersReport} from "./helpers/generateOrdersReport";
+import fs from "fs";
+import path from "path";
+import csv from "csv-parser";
+
 const XlsxPopulate = require("xlsx-populate");
 
 const employeesRepository = new EmployeesRepository();
@@ -103,10 +113,59 @@ export class OrdersController {
       printed: req.query.printed,
       delivered: req.query.delivered,
       orderType: req.query.orderType,
+      updateBy: req.query.updated_by,
+      createdBy: req.query.created_by,
     });
 
     const {orders, ordersMetaData, page, pagesCount} =
       await ordersService.getAllOrders({
+        loggedInUser: loggedInUser,
+        filters: filters,
+      });
+
+    res.status(200).json({
+      status: "success",
+      page: page,
+      pagesCount: pagesCount,
+      data: {
+        ordersMetaData: ordersMetaData,
+        orders: orders,
+      },
+    });
+  });
+
+  getAllOrdersApiKey = catchAsync(async (req, res) => {
+    const loggedInUser = res.locals.user as loggedInUserType;
+
+    const filters = OrdersFiltersSchema.parse({
+      search: req.query.search,
+      sort: req.query.sort,
+      page: req.query.page,
+      size: req.query.size,
+      confirmed: req.query.confirmed,
+      startDate: req.query.start_date,
+      endDate: req.query.end_date,
+      startDeliveryDate: req.query.delivery_start_date,
+      endDeliveryDate: req.query.delivery_end_date,
+      deliveryDate: req.query.delivery_date,
+      governorate: req.query.governorate,
+      statuses: req.query.statuses,
+      status: req.query.status,
+      deliveryType: req.query.delivery_type,
+      storeID: req.query.store_id,
+      locationID: req.query.location_id,
+      receiptNumber: req.query.receipt_number,
+      receiptNumbers: req.query.receipt_numbers,
+      recipientName: req.query.recipient_name,
+      recipientPhone: req.query.recipient_phone,
+      recipientAddress: req.query.recipient_address,
+      clientReport: req.query.client_report,
+      orderID: req.query.order_id,
+      printed: req.query.printed,
+    });
+
+    const {orders, ordersMetaData, page, pagesCount} =
+      await ordersService.getAllOrdersApiKey({
         loggedInUser: loggedInUser,
         filters: filters,
       });
@@ -181,10 +240,9 @@ export class OrdersController {
     }
 
     if (
-      (loggedInUser.role === "BRANCH_MANAGER" &&
-        !repository_id &&
-        getIncoming) ||
-      (loggedInUser.role === "BRANCH_MANAGER" && !repository_id && getOutComing)
+      loggedInUser.role === "BRANCH_MANAGER" &&
+      !repository_id &&
+      getIncoming
     ) {
       throw res.status(200).json({
         status: "success",
@@ -220,9 +278,20 @@ export class OrdersController {
               : (status as OrderStatus),
           storeId: store_id ? Number(store_id) : undefined,
           clientId: client_id ? Number(client_id) : undefined,
+          client:
+            secondaryStatus === "IN_REPOSITORY" && branchId
+              ? {
+                  branchId: +branchId,
+                }
+              : undefined,
           governorate: governorate ? (governorate as Governorate) : undefined,
           forwardedBranchId: getIncoming && branchId ? +branchId : undefined,
-          branchId: !getIncoming && branchId ? +branchId : undefined,
+          branchId:
+            secondaryStatus === "IN_REPOSITORY"
+              ? undefined
+              : !getIncoming && branchId
+              ? +branchId
+              : undefined,
           forwardedRepo: getOutComing
             ? returnRepo?.id
             : getIncoming && to_repository_id
@@ -306,6 +375,26 @@ export class OrdersController {
     });
   });
 
+  getOrderByIdApiKey = catchAsync(async (req, res) => {
+    const params = {
+      orderID: req.params.orderID,
+    };
+
+    const order = await ordersService.getOrderByIdApiKey({
+      params: params,
+    });
+
+    const orderTimeline = await ordersService.getOrderTimeline({
+      params: {orderID: params.orderID},
+      filters: {},
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: order,
+      orderTimeline,
+    });
+  });
   updateOrder = catchAsync(async (req, res) => {
     const params = {
       orderID: req.params.orderID,
@@ -399,6 +488,31 @@ export class OrdersController {
     }
   });
 
+  sendOrdersToReceivingAgentApiKey = catchAsync(async (req, res) => {
+    const ordersIDs = OrdersReceiptsCreateSchema.parse(req.body);
+    const loggedInUser = res.locals.user as loggedInUserType;
+
+    await prisma.order.updateMany({
+      data: {
+        status: "READY_TO_SEND",
+      },
+      where: {
+        status: "REGISTERED",
+        deleted: false,
+        client: {
+          id: loggedInUser.id,
+        },
+        id: {
+          in: ordersIDs.ordersIDs,
+        },
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+    });
+  });
+
   addOrderToRepository = catchAsync(async (req, res) => {
     const params = {
       orderReceiptNumber: req.params.orderID,
@@ -440,100 +554,123 @@ export class OrdersController {
       throw new AppError("لا يوجد مخزن وارد لهذا الفرع!", 404);
     }
 
-    let oldOrder = await ordersRepository.getOrderByReceiptNumber({
-      orderReceiptNumber: params.orderReceiptNumber,
+    const checkOrders = await prisma.order.findMany({
+      where: {
+        OR: [
+          {
+            receiptNumber: params.orderReceiptNumber,
+          },
+          {
+            id: params.orderReceiptNumber,
+          },
+        ],
+        status: {
+          notIn: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED", "DELIVERED"],
+        },
+        companyId: loggedInUser.companyID!!,
+        // confirmed: true,
+        deleted: false,
+      },
+      select: orderSelect,
     });
 
-    if (!oldOrder) {
-      oldOrder = await ordersRepository.getOrder({
-        orderID: params.orderReceiptNumber,
-      });
-      if (!oldOrder) {
-        throw new AppError("الطلب غير موجود", 404);
-      }
+    if (checkOrders.length === 0) {
+      throw new AppError("الطلب غير موجود", 404);
     }
 
-    if (orderData.secondaryStatus === "IN_CAR") {
-      if (exportRepo?.mainRepository) {
-        const repository = await prisma.repository.findFirst({
-          where: {
-            id: orderData.repositoryID,
-          },
-          select: {
-            branchId: true,
-            branch: {
-              select: {
-                governorate: true,
+    if (checkOrders.length > 1) {
+      res.status(200).json({
+        multi: true,
+        data: checkOrders.map((order) => orderReform(order)),
+      });
+    } else {
+      let oldOrder = checkOrders[0];
+
+      if (orderData.secondaryStatus === "IN_CAR") {
+        if (exportRepo?.mainRepository) {
+          const repository = await prisma.repository.findFirst({
+            where: {
+              id: orderData.repositoryID,
+            },
+            select: {
+              branchId: true,
+              branch: {
+                select: {
+                  governorate: true,
+                },
               },
             },
-          },
-        });
+          });
 
-        if (repository?.branch.governorate !== oldOrder?.governorate) {
-          throw new AppError("الطلب غير مرتبط بهذا الفرع", 400);
-        }
-        if (repository.branchId === oldOrder.client.branchId) {
-          orderData.forwardedBranchId = -1;
+          if (repository?.branch.governorate !== oldOrder?.governorate) {
+            throw new AppError("الطلب غير مرتبط بهذا الفرع", 400);
+          }
+          if (repository.branchId === oldOrder.client.branchId) {
+            orderData.forwardedBranchId = -1;
+          } else {
+            orderData.receivedBranchId = repository?.branchId;
+          }
+          orderData.forwardedRepo = exportRepo?.id;
+          orderData.branchID = repository.branchId;
+          orderData.deliveryAgentID = null;
         } else {
-          orderData.receivedBranchId = repository?.branchId;
+          const mainRepository = await prisma.repository.findFirst({
+            where: {
+              mainRepository: true,
+              company: loggedInUser.companyID
+                ? {
+                    id: loggedInUser.companyID,
+                  }
+                : undefined,
+              type: "EXPORT",
+            },
+            select: {
+              id: true,
+            },
+          });
+          orderData.repositoryID = mainRepository?.id;
+          orderData.forwardedRepo = exportRepo?.id;
+          orderData.forwardedBranchId = user.branch?.id;
+          orderData.deliveryAgentID = null;
         }
-        orderData.forwardedRepo = exportRepo?.id;
-        orderData.branchID = repository.branchId;
       } else {
-        const mainRepository = await prisma.repository.findFirst({
-          where: {
-            mainRepository: true,
-            company: loggedInUser.companyID
-              ? {
-                  id: loggedInUser.companyID,
-                }
-              : undefined,
-            type: "EXPORT",
-          },
-          select: {
-            id: true,
-          },
-        });
-        orderData.repositoryID = mainRepository?.id;
-        orderData.forwardedRepo = exportRepo?.id;
-        orderData.forwardedBranchId = user.branch?.id;
+        if (user.branch?.id !== oldOrder.client.branchId) {
+          orderData.forwardedBranchId = oldOrder.client.branchId || undefined;
+        }
+        if (
+          oldOrder.receivedBranchId &&
+          oldOrder.receivedBranchId !== user.branch?.id
+        ) {
+          orderData.receivedBranchId = user.branch?.id;
+        }
+        orderData.repositoryID = exportRepo?.id;
+        orderData.branchID = user.branch?.id;
+        // orderData.deliveryAgentID = null;
       }
-    } else {
-      if (user.branch?.id !== oldOrder.client.branchId) {
-        orderData.forwardedBranchId = oldOrder.client.branchId || undefined;
-      }
+
       if (
-        oldOrder.receivedBranchId &&
-        oldOrder.receivedBranchId !== user.branch?.id
+        oldOrder?.status === "RETURNED" ||
+        oldOrder?.status === "REPLACED" ||
+        oldOrder?.status === "PARTIALLY_RETURNED"
       ) {
-        orderData.receivedBranchId = user.branch?.id;
+        throw new AppError("هذا الطلب مرتجع!", 400);
       }
-      orderData.repositoryID = exportRepo?.id;
-      orderData.branchID = user.branch?.id;
+
+      orderData.confirmed = true;
+
+      const order = await ordersService.updateOrder({
+        params: {
+          orderID: oldOrder?.id,
+        },
+        orderData: orderData,
+        loggedInUser: loggedInUser,
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: order,
+      });
     }
-
-    if (
-      oldOrder?.status === "RETURNED" ||
-      oldOrder?.status === "REPLACED" ||
-      oldOrder?.status === "PARTIALLY_RETURNED"
-    ) {
-      throw new AppError("هذا الطلب مرتجع!", 400);
-    }
-
-    orderData.confirmed = true;
-
-    const order = await ordersService.updateOrder({
-      params: {
-        orderID: oldOrder?.id,
-      },
-      orderData: orderData,
-      loggedInUser: loggedInUser,
-    });
-
-    res.status(200).json({
-      status: "success",
-      data: order,
-    });
   });
 
   addReturnedOrderToRepository = catchAsync(async (req, res) => {
@@ -577,76 +714,106 @@ export class OrdersController {
       throw new AppError("لا يوجد مخزن راوجع لهذا الفرع!", 404);
     }
 
-    let oldOrder = await ordersRepository.getOrderByReceiptNumber({
-      orderReceiptNumber: params.orderReceiptNumber,
-    });
-
-    if (!oldOrder) {
-      oldOrder = await ordersRepository.getOrder({
-        orderID: params.orderReceiptNumber,
-      });
-      if (!oldOrder) {
-        throw new AppError("الطلب غير موجود", 404);
-      }
-    }
-
-    if (!orderData.repositoryID) {
-      orderData.repositoryID = returnsRepo?.id;
-    }
-
-    if (
-      oldOrder?.status !== "RETURNED" &&
-      oldOrder?.status !== "REPLACED" &&
-      oldOrder?.status !== "PARTIALLY_RETURNED"
-    ) {
-      throw new AppError("هذا الطلب غير مرتجع!", 400);
-    }
-
-    if (
-      oldOrder.secondaryStatus === "IN_REPOSITORY" &&
-      oldOrder.repository?.id === returnsRepo?.id
-    ) {
-      throw new AppError("هذا الطلب موجود في مخزن!", 400);
-    }
-    const returnedReport = oldOrder.repositoryReport.find(
-      (r) => r.secondaryType === "RETURNED"
-    );
-    // // Remove the order from the repository report
-    // if (returnedReport) {
-    //   await ordersRepository.removeOrderFromRepositoryReport({
-    //     orderID: oldOrder.id,
-    //     repositoryReportID: returnedReport.id,
-    //     orderData: {
-    //       totalCost: oldOrder.totalCost,
-    //       paidAmount: oldOrder.paidAmount,
-    //       deliveryCost: oldOrder.deliveryCost,
-    //       clientNet: oldOrder.clientNet,
-    //       deliveryAgentNet: oldOrder.deliveryAgentNet,
-    //       companyNet: oldOrder.companyNet,
-    //       governorate: oldOrder.governorate,
-    //     },
-    //   });
-    // }
-
-    const customerOutput = await prisma.customerOutput.deleteMany({
+    const checkOrders = await prisma.order.findMany({
       where: {
-        orderId: oldOrder.id,
-        targetRepositoryId: returnedReport?.id,
+        OR: [
+          {
+            receiptNumber: params.orderReceiptNumber,
+          },
+          {
+            id: params.orderReceiptNumber,
+          },
+        ],
+        status: {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]},
+        companyId: loggedInUser.companyID!!,
+        confirmed: true,
+        deleted: false,
       },
+      select: orderSelect,
     });
 
-    const order = await ordersService.updateOrder({
-      params: {
-        orderID: oldOrder.id,
-      },
-      orderData: orderData,
-      loggedInUser: loggedInUser,
-    });
+    if (checkOrders.length === 0) {
+      throw new AppError("الطلب غير موجود", 404);
+    }
 
-    res.status(200).json({
-      status: "success",
-      data: order,
-    });
+    if (checkOrders.length > 1) {
+      res.status(200).json({
+        multi: true,
+        data: checkOrders.map((order) => orderReform(order)),
+      });
+    } else {
+      // let oldOrder = await ordersRepository.getOrderByReceiptNumber({
+      //   orderReceiptNumber: params.orderReceiptNumber,
+      // });
+
+      // if (!oldOrder) {
+      //   oldOrder = await ordersRepository.getOrder({
+      //     orderID: params.orderReceiptNumber,
+      //   });
+      //   if (!oldOrder) {
+      //     throw new AppError("الطلب غير موجود", 404);
+      //   }
+      // }
+      let oldOrder = checkOrders[0];
+
+      if (!orderData.repositoryID) {
+        orderData.repositoryID = returnsRepo?.id;
+      }
+
+      if (
+        oldOrder?.status !== "RETURNED" &&
+        oldOrder?.status !== "REPLACED" &&
+        oldOrder?.status !== "PARTIALLY_RETURNED"
+      ) {
+        throw new AppError("هذا الطلب غير مرتجع!", 400);
+      }
+
+      if (
+        oldOrder.secondaryStatus === "IN_REPOSITORY" &&
+        oldOrder.repository?.id === returnsRepo?.id
+      ) {
+        throw new AppError("هذا الطلب موجود في مخزن!", 400);
+      }
+      const returnedReport = oldOrder.repositoryReport.find(
+        (r) => r.secondaryType === "RETURNED"
+      );
+      // Remove the order from the repository report
+      if (returnedReport) {
+        await ordersRepository.removeOrderFromRepositoryReport({
+          orderID: oldOrder.id,
+          repositoryReportID: returnedReport.id,
+          orderData: {
+            totalCost: oldOrder.totalCost,
+            paidAmount: oldOrder.paidAmount,
+            deliveryCost: oldOrder.deliveryCost,
+            clientNet: oldOrder.clientNet,
+            deliveryAgentNet: oldOrder.deliveryAgentNet,
+            companyNet: oldOrder.companyNet,
+            governorate: oldOrder.governorate,
+          },
+        });
+      }
+
+      await prisma.customerOutput.deleteMany({
+        where: {
+          orderId: oldOrder.id,
+          targetRepositoryId: returnedReport?.id,
+        },
+      });
+
+      const order = await ordersService.updateOrder({
+        params: {
+          orderID: oldOrder.id,
+        },
+        orderData: orderData,
+        loggedInUser: loggedInUser,
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: order,
+      });
+    }
   });
 
   repositoryConfirmOrderByReceiptNumber = catchAsync(async (req, res) => {
@@ -708,7 +875,7 @@ export class OrdersController {
         pdfId: +pdfId,
       },
       orderBy: {
-        id: "asc",
+        createdAt: "desc",
       },
       select: orderSelect,
     });
@@ -763,6 +930,7 @@ export class OrdersController {
 
   getOrdersReportPDF = catchAsync(async (req, res) => {
     const ordersData = OrdersReportPDFCreateSchema.parse(req.body);
+    const loggedInUser = res.locals.user as loggedInUserType;
 
     const filters = OrdersFiltersSchema.parse({
       confirmed: req.query.confirmed,
@@ -792,8 +960,168 @@ export class OrdersController {
 
     const pdf = await ordersService.getOrdersReportPDF({
       ordersData: ordersData,
-      ordersFilters: filters,
+      ordersFilters: {...filters, size: 10000},
+      loggedInUser: loggedInUser,
     });
+
+    const pdfBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
+    // Set headers for a PDF response
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=generated.pdf");
+
+    res.send(pdfBuffer);
+  });
+
+  getRepositoryOrdersPDF = catchAsync(async (req, res) => {
+    const ordersData = OrdersReportPDFCreateSchema.parse(req.body);
+
+    const {
+      client_id,
+      store_id,
+      repository_id,
+      to_repository_id,
+      governorate,
+      secondaryStatus,
+      status,
+      getIncoming,
+      getOutComing,
+      branchId,
+    } = req.query;
+
+    const loggedInUser = res.locals.user as loggedInUserType;
+
+    const user = await prisma.employee.findUnique({
+      where: {
+        id: loggedInUser.id,
+      },
+      select: {
+        branch: {
+          select: {
+            id: true,
+            repositories: {
+              select: {
+                id: true,
+                type: true,
+                name: true,
+                mainRepository: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const exportRepo = user?.branch?.repositories.find(
+      (repo) => repo.type === "EXPORT"
+    );
+    const returnRepo = user?.branch?.repositories.find(
+      (repo) => repo.type === "RETURN"
+    );
+
+    if (!user) {
+      throw new AppError("حسابك غير موجود", 404);
+    }
+
+    if (!exportRepo && status !== "RETURNED") {
+      throw new AppError("لا يوجد مخزن وارد للفرع الخاص بك ", 404);
+    }
+
+    if (!returnRepo && status === "RETURNED") {
+      throw new AppError("لا يوجد مخزن راوجع للفرع الخاص بك ", 404);
+    }
+
+    let orders: ReturnType<typeof orderReform>[];
+    let ordersIDs: string[] = [];
+
+    if (ordersData.ordersIDs === "*") {
+      const results = await prisma.order.findMany({
+        where: {
+          deleted: false,
+          repositoryId:
+            getOutComing && to_repository_id
+              ? Number(to_repository_id)
+              : getOutComing
+              ? undefined
+              : repository_id
+              ? Number(repository_id)
+              : secondaryStatus === "IN_CAR"
+              ? undefined
+              : status === "RETURNED"
+              ? returnRepo?.id
+              : exportRepo?.id,
+          secondaryStatus: secondaryStatus as SecondaryStatus,
+          status:
+            status === "RETURNED"
+              ? {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]}
+              : (status as OrderStatus),
+          storeId: store_id ? Number(store_id) : undefined,
+          clientId: client_id ? Number(client_id) : undefined,
+          client:
+            secondaryStatus === "IN_REPOSITORY" && branchId
+              ? {
+                  branchId: +branchId,
+                }
+              : undefined,
+          governorate: governorate ? (governorate as Governorate) : undefined,
+          forwardedBranchId: getIncoming && branchId ? +branchId : undefined,
+          companyId: loggedInUser.companyID!!,
+          branchId:
+            secondaryStatus === "IN_REPOSITORY"
+              ? undefined
+              : !getIncoming && branchId
+              ? +branchId
+              : undefined,
+          forwardedRepo: getOutComing
+            ? returnRepo?.id
+            : getIncoming && to_repository_id
+            ? Number(to_repository_id)
+            : getIncoming
+            ? undefined
+            : secondaryStatus === "IN_CAR"
+            ? exportRepo?.id
+            : undefined,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+        select: orderSelect,
+      });
+      orders = results.map((order) => orderReform(order));
+
+      for (const order of orders) {
+        if (order) {
+          ordersIDs.push(order.id);
+        }
+      }
+    } else {
+      orders = await ordersRepository.getOrdersByIDs({
+        ordersIDs: ordersData.ordersIDs,
+      });
+      ordersIDs = ordersData.ordersIDs;
+    }
+
+    if (!orders || orders.length === 0) {
+      throw new AppError("لا يوجد طلبات لعمل التقرير", 400);
+    }
+
+    let ordersMetaData: object;
+
+    ordersMetaData = {
+      date: new Date(),
+      count: orders.length,
+      baghdadCount: orders.filter((order) => order?.governorate === "BAGHDAD")
+        .length,
+      governoratesCount: orders.filter(
+        (order) => order?.governorate !== "BAGHDAD"
+      ).length,
+      company: orders[0]?.company,
+    };
+
+    const pdf = await generateOrdersReport(
+      ordersData.type,
+      ordersMetaData,
+      orders
+    );
 
     const pdfBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
     // Set headers for a PDF response
@@ -827,6 +1155,40 @@ export class OrdersController {
     });
 
     const statistics = await ordersService.getOrdersStatistics({
+      loggedInUser: loggedInUser,
+      filters: filters,
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: statistics,
+    });
+  });
+
+  getOrdersStatisticsV2 = catchAsync(async (req, res) => {
+    const loggedInUser = res.locals.user as loggedInUserType;
+
+    const filters = OrdersStatisticsFiltersSchema.parse({
+      clientID: req.query.client_id,
+      deliveryAgentID: req.query.delivery_agent_id,
+      companyID: req.query.company_id,
+      startDate: req.query.start_date,
+      endDate: req.query.end_date,
+      governorate: req.query.governorate,
+      statuses: req.query.statuses,
+      deliveryType: req.query.delivery_type,
+      storeID: req.query.store_id,
+      locationID: req.query.location_id,
+      clientReport: req.query.client_report,
+      repositoryReport: req.query.repository_report,
+      branchReport: req.query.branch_report,
+      deliveryAgentReport: req.query.delivery_agent_report,
+      governorateReport: req.query.governorate_report,
+      companyReport: req.query.company_report,
+      orderType: req.query.orderType,
+    });
+
+    const statistics = await ordersService.getOrdersStatisticV2({
       loggedInUser: loggedInUser,
       filters: filters,
     });
@@ -992,6 +1354,158 @@ export class OrdersController {
     }
   });
 
+  getReturnedRepositorOrdersStatistics = catchAsync(async (req, res) => {
+    const {
+      repository_id,
+      to_repository_id,
+      governorate,
+      secondaryStatus,
+      status,
+      getIncoming,
+      getOutComing,
+      branchId,
+      type,
+    } = req.query;
+
+    const loggedInUser = res.locals.user as loggedInUserType;
+
+    const user = await prisma.employee.findUnique({
+      where: {
+        id: loggedInUser.id,
+      },
+      select: {
+        branch: {
+          select: {
+            id: true,
+            repositories: {
+              select: {
+                id: true,
+                type: true,
+                name: true,
+                mainRepository: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const exportRepo = user?.branch?.repositories.find(
+      (repo) => repo.type === "EXPORT"
+    );
+    const returnRepo = user?.branch?.repositories.find(
+      (repo) => repo.type === "RETURN"
+    );
+
+    if (
+      loggedInUser.role === "BRANCH_MANAGER" &&
+      !repository_id &&
+      getIncoming
+    ) {
+      throw res.status(200).json({
+        status: "success",
+        data: [],
+      });
+    }
+
+    const where = {
+      deleted: false,
+      repositoryId:
+        getOutComing && to_repository_id
+          ? Number(to_repository_id)
+          : getOutComing
+          ? undefined
+          : repository_id
+          ? Number(repository_id)
+          : secondaryStatus === "IN_CAR"
+          ? undefined
+          : status === "RETURNED"
+          ? returnRepo?.id
+          : exportRepo?.id,
+      secondaryStatus: secondaryStatus as SecondaryStatus,
+      status:
+        status === "RETURNED"
+          ? {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]}
+          : (status as OrderStatus),
+
+      client:
+        secondaryStatus === "IN_REPOSITORY" && branchId
+          ? {
+              branchId: +branchId,
+            }
+          : undefined,
+      governorate: governorate ? (governorate as Governorate) : undefined,
+      forwardedBranchId: getIncoming && branchId ? +branchId : undefined,
+      branchId:
+        secondaryStatus === "IN_REPOSITORY"
+          ? undefined
+          : !getIncoming && branchId
+          ? +branchId
+          : undefined,
+      forwardedRepo: getOutComing
+        ? returnRepo?.id
+        : getIncoming && to_repository_id
+        ? Number(to_repository_id)
+        : getIncoming
+        ? undefined
+        : secondaryStatus === "IN_CAR"
+        ? exportRepo?.id
+        : undefined,
+    } satisfies Prisma.OrderWhereInput;
+
+    const repositories = await prisma.repository.findMany({
+      where: {
+        companyId: loggedInUser.companyID!!,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    if (type === "forwarded") {
+      const ordersStatisticsByStatus = await prisma.order.groupBy({
+        by: ["repositoryId"],
+        _count: {
+          id: true,
+        },
+        where: where,
+      });
+      res.status(200).json({
+        status: "success",
+        data: ordersStatisticsByStatus.map((status) => {
+          return {
+            count: status._count.id,
+            repositoryId: status.repositoryId,
+            repoName: repositories.find(
+              (repository) => +repository.id === +status.repositoryId!!
+            )?.name,
+          };
+        }),
+      });
+    } else {
+      const ordersStatisticsByStatus = await prisma.order.groupBy({
+        by: ["forwardedRepo"],
+        _count: {
+          id: true,
+        },
+        where: where,
+      });
+      res.status(200).json({
+        status: "success",
+        data: ordersStatisticsByStatus.map((status) => {
+          return {
+            count: status._count.id,
+            repositoryId: status.forwardedRepo,
+            repoName: repositories.find(
+              (repository) => +repository.id === +status.forwardedRepo!!
+            )?.name,
+          };
+        }),
+      });
+    }
+  });
+
   getCLientOrdersStatistics = catchAsync(async (req, res) => {
     const loggedInUser = res.locals.user as loggedInUserType;
     const status = req.query.status;
@@ -1072,7 +1586,7 @@ export class OrdersController {
   getReceivingAgentStores = catchAsync(async (req, res) => {
     const loggedInUser = res.locals.user as loggedInUserType;
 
-    const {receivingAgentId, clientId} = req.query;
+    const {receivingAgentId, clientId, storeId} = req.query;
 
     let inquiryClientsIDs: number[] | undefined = undefined;
 
@@ -1095,6 +1609,7 @@ export class OrdersController {
       where: {
         AND: [
           {clientId: clientId ? +clientId : {in: inquiryClientsIDs}},
+          {storeId: storeId ? +storeId : {in: inquiryClientsIDs}},
           {status: {in: ["DELIVERED", "PARTIALLY_RETURNED", "REPLACED"]}},
           {
             deleted: false,
@@ -1288,9 +1803,6 @@ export class OrdersController {
               clientReport: {
                 none: {
                   secondaryType: "DELIVERED",
-                  report: {
-                    confirmed: true,
-                  },
                 },
               },
               status: {
@@ -1301,9 +1813,6 @@ export class OrdersController {
               clientReport: {
                 none: {
                   secondaryType: "RETURNED",
-                  report: {
-                    confirmed: true,
-                  },
                 },
               },
               status: {
@@ -1350,6 +1859,21 @@ export class OrdersController {
     const orderTimeline = await ordersService.getOrderTimeline({
       params: params,
       filters: filters,
+    });
+
+    res.status(200).json({
+      status: "success",
+      data: orderTimeline,
+    });
+  });
+
+  getOrderTimelineApiKey = catchAsync(async (req, res) => {
+    const params = {
+      orderID: req.params.orderID,
+    };
+
+    const orderTimeline = await ordersService.getOrderTimelineApiKey({
+      params: params,
     });
 
     res.status(200).json({
@@ -1436,7 +1960,7 @@ export class OrdersController {
     });
   });
 
-  generateExcelSheet = catchAsync(async (req, res) => {
+  generateExcelSheet = catchAsync(async (_req, res) => {
     const loggedInUser = res.locals.user as {companyID: number};
 
     // إنشاء ملف جديد
@@ -1550,5 +2074,73 @@ export class OrdersController {
     );
     res.setHeader("Content-Disposition", "attachment; filename=template.xlsx");
     res.send(Buffer.from(buffer));
+  });
+
+  updateOrderCsv = catchAsync(async (_req, res) => {
+    const filePath = path.join(process.cwd(), "data", "orders.csv");
+
+    const rows: any[] = [];
+
+    // 1️⃣ Read CSV
+    await new Promise<void>((resolve, reject) => {
+      fs.createReadStream(filePath)
+        .pipe(csv())
+        .on("data", (row) => rows.push(row))
+        .on("end", resolve)
+        .on("error", reject);
+    });
+
+    const updatedIds: string[] = [];
+    const skippedIds: string[] = [];
+
+    const cleanInt = (value: any) =>
+      !value || value === "NULL" ? null : Number(value);
+
+    const cleanString = (value: any) =>
+      !value || value === "NULL" ? null : value;
+
+    // 2️⃣ Run updates
+    await Promise.all(
+      rows.map(async (row) => {
+        if (!row.id || !row.status) {
+          skippedIds.push(row.id);
+          return;
+        }
+
+        const result = await prisma.order.updateMany({
+          where: {id: row.id},
+          data: {
+            status: row.status,
+            secondaryStatus: cleanString(row.secondaryStatus),
+            forwardedBranchId: cleanInt(row.forwardedBranchId),
+            receivedBranchId: cleanInt(row.receivedBranchId),
+            deliveryAgentId: cleanInt(row.deliveryAgentId),
+            branchId: cleanInt(row.branchId),
+          },
+        });
+
+        if (result.count > 0) {
+          updatedIds.push(row.id);
+        } else {
+          skippedIds.push(row.id);
+        }
+      })
+    );
+
+    res.status(200).json({
+      status: "success",
+      totalRows: rows.length,
+      updatedCount: updatedIds.length,
+      skippedCount: skippedIds.length,
+      updatedIds,
+      skippedIds,
+    });
+  });
+
+  getGeneralInfo = catchAsync(async (_req, res) => {
+    res.status(200).json({
+      login: "9647713642110",
+      profile: "9647713642110",
+    });
   });
 }

@@ -5,12 +5,11 @@ import {
   type Governorate,
 } from "@prisma/client";
 // import { loggedInUserType } from "../../types/user";
-import { AppError } from "../../lib/AppError";
-import { catchAsync } from "../../lib/catchAsync";
-import type { loggedInUserType } from "../../types/user";
-import { LocationCreateSchema, LocationUpdateSchema } from "./locations.dto";
-import { LocationsRepository } from "./locations.repository";
-import { EmployeesRepository } from "../employees/employees.repository";
+import {catchAsync} from "../../lib/catchAsync";
+import type {loggedInUserType} from "../../types/user";
+import {LocationCreateSchema, LocationUpdateSchema} from "./locations.dto";
+import {LocationsRepository} from "./locations.repository";
+import {EmployeesRepository} from "../employees/employees.repository";
 
 const locationsRepository = new LocationsRepository();
 const employeesRepository = new EmployeesRepository();
@@ -94,7 +93,7 @@ export class LocationsController {
       page = +req.query.page;
     }
 
-    const { locations, pagesCount } =
+    const {locations, pagesCount} =
       await locationsRepository.getAllLocationsPaginated({
         page: page,
         size: size,
@@ -157,8 +156,14 @@ export class LocationsController {
     });
   });
 
-  publicGetAllLocations = catchAsync(async (_req, res) => {
-    const locations = await locationsRepository.publicGetAllLocations();
+  publicGetAllLocations = catchAsync(async (req, res) => {
+    const governorate = req.query.governorate?.toString().toUpperCase() as
+      | Governorate
+      | undefined;
+
+    const locations = await locationsRepository.publicGetAllLocations(
+      governorate
+    );
 
     res.status(200).json(locations);
   });

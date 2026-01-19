@@ -84,12 +84,13 @@ export class ReportController {
       createdByID: req.query.created_by_id,
       deleted: req.query.deleted,
       minified: req.query.minified,
-      secondaryType: undefined,
+      secondaryType: req.query.secondaryReportType,
     });
 
     if (
       loggedInUser.role === "INQUIRY_EMPLOYEE" ||
       loggedInUser.role === "RECEIVING_AGENT" ||
+      loggedInUser.role === "EMPLOYEE_CLIENT_ASSISTANT" ||
       (loggedInUser.role === "CLIENT_ASSISTANT" &&
         !loggedInUser.permissions.includes("MANAGE_REPORTS"))
     ) {
@@ -170,9 +171,11 @@ export class ReportController {
 
   getReportPDF = catchAsync(async (req, res) => {
     const params = {reportID: +req.params.reportID};
+    const loggedInUser: loggedInUserType = res.locals.user;
 
     const pdf = await reportsService.getReportPDF({
       params: params,
+      loggedInUser,
     });
 
     // Ensure PDF data is received as a Buffer or convert it
@@ -219,9 +222,12 @@ export class ReportController {
     // Set headers for a PDF response
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=generated.pdf");
+    res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Accept-Ranges", "none"); // prevents chunking on some setups
+    res.removeHeader("ETag"); // VERY IMPORTANT
     console.log("PDF size:", pdfBuffer.length);
-
-    res.send(pdfBuffer);
+    res.end(pdfBuffer); // fastest
   });
 
   updateReport = catchAsync(async (req, res) => {

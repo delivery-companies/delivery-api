@@ -1,6 +1,6 @@
-import puppeteer from "puppeteer";
 import {Logger} from "../../../lib/logger";
 import {AppError} from "../../../lib/AppError";
+import {getBrowser} from "../../../lib/puppeteerInstance";
 
 // html and css content or html and css file path
 
@@ -13,17 +13,20 @@ export const generatePDF = async (
     landscape: true,
   }
 ) => {
-  try {
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      ignoreDefaultArgs: ["--disable-extensions"],
-    });
-    const page = await browser.newPage();
+  const browser = await getBrowser();
+  const page = await browser.newPage();
 
+  try {
     await page.emulateMediaType("print");
-    await page.setContent(html);
-    css && (await page.addStyleTag({content: css}));
+    await page.setContent(
+      `
+      <style>${css ?? ""}</style>
+      ${html}
+    `,
+      {
+        waitUntil: "domcontentloaded", // MUCH FASTER
+      }
+    );
 
     const isLandscape = options.landscape === true;
 
@@ -40,11 +43,12 @@ export const generatePDF = async (
       },
     });
 
-    await browser.close();
     return pdf;
     // return Buffer.from(Object.values(pdf));
   } catch (error) {
     Logger.error(error);
     throw new AppError("حدث خطأ أثناء انشاء ملف ال pdf", 500);
+  } finally {
+    await page.close().catch(() => {});
   }
 };

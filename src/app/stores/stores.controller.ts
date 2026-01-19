@@ -57,11 +57,14 @@ export class StoresController {
     let clientAssistantID = req.query.client_assistant_id
       ? +req.query.client_assistant_id
       : undefined;
-    if (loggedInUser.role === EmployeeRole.CLIENT_ASSISTANT) {
-      clientAssistantID = loggedInUser.id;
-    }
+    // if (loggedInUser.role === EmployeeRole.CLIENT_ASSISTANT) {
+    //   clientAssistantID = loggedInUser.id;
+    // }
 
-    if (loggedInUser.role === "EMPLOYEE_CLIENT_ASSISTANT") {
+    if (
+      loggedInUser.role === "EMPLOYEE_CLIENT_ASSISTANT" ||
+      loggedInUser.role === "CLIENT_ASSISTANT"
+    ) {
       const employee = await prisma.employee.findUnique({
         where: {
           id: loggedInUser.id,
@@ -126,6 +129,40 @@ export class StoresController {
       status: "success",
       page: page,
       pagesCount: pagesCount,
+      data: stores,
+    });
+  });
+
+  getAllClientStores = catchAsync(async (req, res) => {
+    // Filters
+    const loggedInUser = res.locals.user as loggedInUserType;
+    let companyID: number | undefined;
+    let name: string | undefined;
+
+    if (req.query.name) {
+      name = req.query.name + "";
+    }
+    if (Object.keys(AdminRole).includes(loggedInUser.role)) {
+      companyID = req.query.company_id ? +req.query.company_id : undefined;
+    } else if (loggedInUser.companyID) {
+      companyID = loggedInUser.companyID;
+    }
+
+    let clientID: number | undefined;
+
+    clientID = loggedInUser.id;
+
+    const deleted = "false";
+
+    const {stores} = await storesRepository.getAllClientStoresPaginated({
+      deleted: deleted,
+      clientID,
+      companyID: companyID,
+      name: name,
+    });
+
+    res.status(200).json({
+      status: "success",
       data: stores,
     });
   });

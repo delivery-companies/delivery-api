@@ -1,6 +1,7 @@
-import { catchAsync } from "../../lib/catchAsync";
-import { NotificationUpdateSchema } from "./notifications.dto";
-import { NotificationsRepository } from "./notifications.repository";
+import {AppError} from "../../lib/AppError";
+import {catchAsync} from "../../lib/catchAsync";
+import {NotificationUpdateSchema} from "./notifications.dto";
+import {NotificationsRepository} from "./notifications.repository";
 
 const notificationsRepository = new NotificationsRepository();
 
@@ -25,7 +26,7 @@ export class NotificationsController {
       page = +req.query.page;
     }
 
-    const { notifications, pagesCount, unSeenCount } =
+    const {notifications, pagesCount, unSeenCount} =
       await notificationsRepository.getAllNotificationsPaginated(
         userID,
         page,
@@ -45,6 +46,9 @@ export class NotificationsController {
   updateNotification = catchAsync(async (req, res) => {
     const notificationID = +req.params.notificationID;
 
+    if (!notificationID) {
+      throw new AppError(" no notificationID", 404);
+    }
     const notificationData = NotificationUpdateSchema.parse(req.body);
 
     const notification = await notificationsRepository.updateNotification({

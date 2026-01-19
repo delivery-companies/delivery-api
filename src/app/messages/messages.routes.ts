@@ -22,6 +22,7 @@ router
       EmployeeRole.INQUIRY_EMPLOYEE,
       EmployeeRole.DELIVERY_AGENT,
       EmployeeRole.CLIENT_ASSISTANT,
+      EmployeeRole.EMPLOYEE_CLIENT_ASSISTANT,
       ClientRole.CLIENT,
     ]),
     upload.single("image"),
@@ -41,6 +42,7 @@ router
       EmployeeRole.REPOSITORIY_EMPLOYEE,
       EmployeeRole.DELIVERY_AGENT,
       EmployeeRole.CLIENT_ASSISTANT,
+      EmployeeRole.EMPLOYEE_CLIENT_ASSISTANT,
       ClientRole.CLIENT,
     ]),
     messageController.getUserChatStatics
@@ -58,6 +60,7 @@ router
       EmployeeRole.INQUIRY_EMPLOYEE,
       EmployeeRole.DELIVERY_AGENT,
       EmployeeRole.CLIENT_ASSISTANT,
+      EmployeeRole.EMPLOYEE_CLIENT_ASSISTANT,
       ClientRole.CLIENT,
     ]),
     messageController.getUserChatMessages
@@ -75,6 +78,7 @@ router
       EmployeeRole.INQUIRY_EMPLOYEE,
       EmployeeRole.DELIVERY_AGENT,
       EmployeeRole.CLIENT_ASSISTANT,
+      EmployeeRole.EMPLOYEE_CLIENT_ASSISTANT,
       ClientRole.CLIENT,
     ]),
     messageController.markAllSeen
@@ -92,6 +96,7 @@ router
       EmployeeRole.INQUIRY_EMPLOYEE,
       EmployeeRole.DELIVERY_AGENT,
       EmployeeRole.CLIENT_ASSISTANT,
+      EmployeeRole.EMPLOYEE_CLIENT_ASSISTANT,
       ClientRole.CLIENT,
     ]),
     messageController.deleteMessages

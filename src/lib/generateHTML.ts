@@ -41,7 +41,18 @@ export const generateHTML = async (template: string, data: object) => {
     });
     hb.registerHelper(
       "isBaghdad",
-      (governorate, baghdadDeliveryCost, governoratesDeliveryCost) => {
+      (
+        governorate,
+        branchDeliveryCost,
+        baghdadDeliveryCost,
+        governoratesDeliveryCost
+      ) => {
+        if (
+          (!baghdadDeliveryCost && !governoratesDeliveryCost) ||
+          (+baghdadDeliveryCost === 0 && +governoratesDeliveryCost === 0)
+        ) {
+          return Number(branchDeliveryCost || 0).toLocaleString("en-GB");
+        }
         if (governorate === Governorate.BAGHDAD) {
           return Number(baghdadDeliveryCost || 0).toLocaleString("en-GB");
         }

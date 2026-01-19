@@ -5,10 +5,10 @@ import {
   type Prisma,
   type SecondaryStatus,
 } from "@prisma/client";
-import { prisma } from "../../database/db";
-import { AppError } from "../../lib/AppError";
-import type { loggedInUserType } from "../../types/user";
-import type { ReportCreateOrdersFiltersType } from "../reports/reports.dto";
+import {prisma} from "../../database/db";
+import {AppError} from "../../lib/AppError";
+import type {loggedInUserType} from "../../types/user";
+import type {ReportCreateOrdersFiltersType} from "../reports/reports.dto";
 import type {
   OrderCreateType,
   OrderTimelineFiltersType,
@@ -20,29 +20,54 @@ import type {
 import {
   mobileOrderReform,
   orderReform,
+  orderReformApiKey,
   orderSelect,
+  orderSelectApiKey,
   orderTimelineReform,
   orderTimelineSelect,
   statisticsReformed,
 } from "./orders.responses";
-import { io } from "../../server";
-import { MessagesController } from "../messages/messages.controller";
+import {io} from "../../server";
+import {MessagesController} from "../messages/messages.controller";
 
 const messageController = new MessagesController();
 
+let counter = 0;
+
 export class OrdersRepository {
-  generateRandomId(companyID: number) {
+  generateRandomId() {
     const now = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "Asia/Baghdad" })
+      new Date().toLocaleString("en-US", {timeZone: "Asia/Baghdad"})
     );
-    // Format date as YYMMDD
+
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     const datePart = `${month}${day}`;
-    const timestampPart = Date.now().toString().slice(-5);
 
-    return `${datePart}${timestampPart}${companyID}`;
+    // Use last 3 digits of timestamp → more space for counter
+    const ts = Date.now().toString().slice(-3);
+
+    // 2-digit counter (00–99)
+    counter = (counter + 1) % 100;
+
+    const ctr = String(counter).padStart(2, "0");
+
+    // Final ID → same length as before
+    return `${datePart}${ts}${ctr}`;
   }
+
+  async generateUniqueOrderId() {
+    while (true) {
+      const id = this.generateRandomId();
+
+      const exists = await prisma.order.findUnique({
+        where: {id},
+      });
+
+      if (!exists) return id;
+    }
+  }
+
   async getDeliverCost(clientId: number, governorate: Governorate) {
     const client = await prisma.client.findUnique({
       where: {
@@ -64,10 +89,7 @@ export class OrdersRepository {
 
     return (
       governoratesDeliveryCosts.find(
-        (governorateDeliveryCost: {
-          governorate: Governorate;
-          cost: number;
-        }) => {
+        (governorateDeliveryCost: {governorate: Governorate; cost: number}) => {
           return governorateDeliveryCost.governorate === governorate;
         }
       )?.cost || 0
@@ -84,8 +106,10 @@ export class OrdersRepository {
     let quantity = 0;
     let weight = (data.orderData.weight as number) || 0;
     let status: OrderStatus = "REGISTERED";
+    let secondaryStatus: SecondaryStatus = "WITH_CLIENT";
     let receivingBranchId: number | undefined = undefined;
     let forwardedBranchId: number | undefined = undefined;
+
     const client = await prisma.client.findUnique({
       where: {
         id: data.clientID,
@@ -104,150 +128,61 @@ export class OrdersRepository {
       data.loggedInUser.role !== "CLIENT" &&
       data.loggedInUser.role !== "CLIENT_ASSISTANT"
     ) {
-      const repository = await prisma.repository.findFirst({
-        where: {
-          type: "EXPORT",
-          branch: {
-            id: data.orderData.branchID,
-          },
-        },
-        select: {
-          id: true,
-        },
-      });
-      if (!repository) {
-        throw new AppError("لا يوجد مخزن فرز مرتبط بالفرع", 404);
-      }
-      receivingBranchId = data.orderData.branchID;
-      forwardedBranchId = client?.branchId || undefined;
-
-      data.orderData.repositoryID = repository.id;
-      status = "IN_GOV_REPOSITORY";
-    }
-
-    if (data.orderData.withProducts === true) {
-      for (const product of data.orderData.products) {
-        const productData = await prisma.product.findUnique({
+      if (data.loggedInUser.mainRepository) {
+        const repository = await prisma.repository.findFirst({
           where: {
-            id: product.productID,
+            type: "EXPORT",
+            branch: {
+              id: data.orderData.branchID,
+            },
           },
           select: {
-            price: true,
-            weight: true,
-          },
-        });
-        if (!productData) {
-          throw new Error("منتج غير موجود");
-        }
-        totalCost += +productData.price * product.quantity;
-        quantity += product.quantity;
-      }
-    }
-
-    // Check if products are available for the specific color and size
-    if (data.orderData.withProducts === true) {
-      for (const product of data.orderData.products) {
-        const productData = await prisma.product.findUnique({
-          where: {
-            id: product.productID,
-          },
-          select: {
-            title: true,
+            id: true,
           },
         });
 
-        if (!productData) {
-          throw new AppError("منتج غير موجود", 400);
+        if (!repository) {
+          throw new AppError("لا يوجد مخزن فرز مرتبط بالفرع", 404);
         }
+        receivingBranchId = data.orderData.branchID;
+        forwardedBranchId = client?.branchId || undefined;
 
-        const productTitle = productData?.title;
-
-        if (product.colorID) {
-          const productColor = await prisma.productColors.findUnique({
+        data.orderData.repositoryID = repository.id;
+        secondaryStatus = "IN_CAR";
+        status = "IN_GOV_REPOSITORY";
+      } else {
+        if (data.orderData.branchID === client.branchId) {
+          const repository = await prisma.repository.findFirst({
             where: {
-              productId_colorId: {
-                productId: product.productID,
-                colorId: product.colorID,
+              type: "EXPORT",
+              branch: {
+                id: data.orderData.branchID,
               },
             },
             select: {
-              quantity: true,
-              color: {
-                select: {
-                  title: true,
-                },
-              },
+              id: true,
             },
           });
-
-          if (!productColor) {
-            throw new AppError(
-              `المنتج (${productTitle}) غير متوفر بهذا اللون`,
-              400
-            );
-          }
-
-          if (productColor.quantity < product.quantity) {
-            throw new AppError(
-              `الكمية المتاحة من المنتج (${productTitle}) باللون (${productColor.color.title}) هي (${productColor.quantity})`,
-              400
-            );
-          }
-        }
-
-        if (product.sizeID) {
-          const productSize = await prisma.productSizes.findUnique({
+          data.orderData.repositoryID = repository?.id;
+          secondaryStatus = "IN_REPOSITORY";
+          status = "IN_GOV_REPOSITORY";
+        } else {
+          const repository = await prisma.repository.findFirst({
             where: {
-              productId_sizeId: {
-                productId: product.productID,
-                sizeId: product.sizeID,
-              },
+              type: "EXPORT",
+              mainRepository: true,
+              companyId: data.companyID,
             },
             select: {
-              quantity: true,
-              size: {
-                select: {
-                  title: true,
-                },
-              },
+              id: true,
             },
           });
+          receivingBranchId = data.orderData.branchID;
+          forwardedBranchId = client?.branchId || undefined;
 
-          if (!productSize) {
-            throw new AppError(
-              `المنتج (${productTitle}) غير متوفر بهذا المقاس`,
-              400
-            );
-          }
-
-          if (productSize.quantity < product.quantity) {
-            throw new AppError(
-              `الكمية المتاحة من المنتج (${productTitle}) بالمقاس (${productSize.size.title}) هي (${productSize.quantity})`,
-              400
-            );
-          }
-        }
-
-        if (product.quantity) {
-          const productQuantity = await prisma.product.findUnique({
-            where: {
-              id: product.productID,
-            },
-            select: {
-              stock: true,
-            },
-          });
-
-          if (!productQuantity) {
-            throw new AppError(`المنتج (${productTitle}) غير متوفر`, 400);
-          }
-
-          if (productQuantity.stock < product.quantity) {
-            throw new AppError(
-              `الكمية المتاحة من المنتج (${productTitle}) هي (${productQuantity.stock})`,
-              400
-            );
-          }
+          data.orderData.repositoryID = repository?.id;
+          secondaryStatus = "IN_CAR";
+          status = "IN_MAIN_REPOSITORY";
         }
       }
     }
@@ -311,7 +246,7 @@ export class OrdersRepository {
         : 0;
     }
 
-    let randomId = this.generateRandomId(data.companyID);
+    let randomId = await this.generateUniqueOrderId();
 
     // Create order
     const createdOrder = await prisma.order.create({
@@ -416,46 +351,12 @@ export class OrdersRepository {
               }),
             }
           : undefined,
-        confirmed: data.orderData.forwardedCompanyID
-          ? false
-          : data.orderData.confirmed,
+        confirmed: data.orderData.confirmed,
         receivedAt: data.orderData.confirmed ? new Date() : undefined,
         status: status,
-        secondaryStatus:
-          data.loggedInUser.role !== "CLIENT" &&
-          data.loggedInUser.role !== "CLIENT_ASSISTANT"
-            ? "IN_CAR"
-            : "WITH_CLIENT",
+        secondaryStatus: secondaryStatus,
         deliveryAgent: undefined,
-        orderProducts:
-          data.orderData.withProducts === false
-            ? undefined
-            : {
-                create: data.orderData.products.map((product) => {
-                  return {
-                    quantity: product.quantity,
-                    size: product.sizeID
-                      ? {
-                          connect: {
-                            id: product.sizeID,
-                          },
-                        }
-                      : undefined,
-                    color: product.colorID
-                      ? {
-                          connect: {
-                            id: product.colorID,
-                          },
-                        }
-                      : undefined,
-                    product: {
-                      connect: {
-                        id: product.productID,
-                      },
-                    },
-                  };
-                }),
-              },
+        orderProducts: undefined,
       },
       select: orderSelect,
     });
@@ -466,55 +367,6 @@ export class OrdersRepository {
         numberOfMessages: 0,
       },
     });
-    // TODO: Reduce products quantity and color and size quantity
-    if (data.orderData.withProducts === true) {
-      for (const product of data.orderData.products) {
-        if (product.colorID) {
-          await prisma.productColors.update({
-            where: {
-              productId_colorId: {
-                productId: product.productID,
-                colorId: product.colorID,
-              },
-            },
-            data: {
-              quantity: {
-                decrement: product.quantity,
-              },
-            },
-          });
-        }
-
-        if (product.sizeID) {
-          await prisma.productSizes.update({
-            where: {
-              productId_sizeId: {
-                productId: product.productID,
-                sizeId: product.sizeID,
-              },
-            },
-            data: {
-              quantity: {
-                decrement: product.quantity,
-              },
-            },
-          });
-        }
-
-        if (product.quantity) {
-          await prisma.product.update({
-            where: {
-              id: product.productID,
-            },
-            data: {
-              stock: {
-                decrement: product.quantity,
-              },
-            },
-          });
-        }
-      }
-    }
 
     return orderReform(createdOrder);
   }
@@ -662,6 +514,11 @@ export class OrdersRepository {
                 processingStatus: data.filters.processingStatus,
               },
               {
+                status: data.filters.statuses
+                  ? {in: data.filters.statuses}
+                  : undefined,
+              },
+              {
                 status: data.filters.status,
               },
               {
@@ -670,6 +527,9 @@ export class OrdersRepository {
                       in: data.filters.inquiryGovernorates,
                     }
                   : undefined,
+              },
+              {
+                governorate: data.filters.governorate,
               },
               // Filter by notes
               {
@@ -691,6 +551,17 @@ export class OrdersRepository {
                     },
               },
               {
+                branchId: data.filters.orderType
+                  ? undefined
+                  : data.filters.branchID,
+              },
+              {
+                clientId: data.filters.clientID,
+              },
+              {
+                deliveryAgentId: data.filters.deliveryAgentID,
+              },
+              {
                 store: data.filters.inquiryStoresIDs
                   ? {
                       id: {
@@ -698,6 +569,12 @@ export class OrdersRepository {
                       },
                     }
                   : undefined,
+              },
+              {
+                storeId: data.filters.storeID,
+              },
+              {
+                locationId: data.filters.locationID,
               },
               {
                 company: {
@@ -716,7 +593,25 @@ export class OrdersRepository {
               {
                 createdAt: data.filters.endDate
                   ? {
-                      lte: endDate,
+                      lt: endDate,
+                    }
+                  : undefined,
+              },
+              {
+                // gte deliveryDate day start time (00:00:00) and lte deliveryDate day end time (23:59:59)
+                updatedAt: data.filters.deliveryDate
+                  ? {
+                      gte: new Date(
+                        new Date(data.filters.deliveryDate).setHours(0, 0, 0, 0)
+                      ),
+                      lte: new Date(
+                        new Date(data.filters.deliveryDate).setHours(
+                          23,
+                          59,
+                          59,
+                          999
+                        )
+                      ),
                     }
                   : undefined,
               },
@@ -855,10 +750,10 @@ export class OrdersRepository {
                     AND:
                       data.filters.deliveryAgentReport === "true"
                         ? [
-                            { deliveryAgentReport: { isNot: null } },
+                            {deliveryAgentReport: {isNot: null}},
                             {
                               deliveryAgentReport: {
-                                report: { deleted: false },
+                                report: {deleted: false},
                               },
                             },
                           ]
@@ -868,10 +763,10 @@ export class OrdersRepository {
                     OR:
                       data.filters.deliveryAgentReport === "false"
                         ? [
-                            { deliveryAgentReport: { is: null } },
+                            {deliveryAgentReport: {is: null}},
                             {
                               deliveryAgentReport: {
-                                report: { deleted: true },
+                                report: {deleted: true},
                               },
                             },
                           ]
@@ -886,9 +781,9 @@ export class OrdersRepository {
                     AND:
                       data.filters.governorateReport === "true"
                         ? [
-                            { governorateReport: { isNot: null } },
+                            {governorateReport: {isNot: null}},
                             {
-                              governorateReport: { report: { deleted: false } },
+                              governorateReport: {report: {deleted: false}},
                             },
                           ]
                         : undefined,
@@ -897,9 +792,9 @@ export class OrdersRepository {
                     OR:
                       data.filters.governorateReport === "false"
                         ? [
-                            { governorateReport: { is: null } },
+                            {governorateReport: {is: null}},
                             {
-                              governorateReport: { report: { deleted: true } },
+                              governorateReport: {report: {deleted: true}},
                             },
                           ]
                         : undefined,
@@ -945,20 +840,32 @@ export class OrdersRepository {
               },
               {
                 forwardedBranchId:
+                  data.filters.orderType === "forwarded"
+                    ? data.filters.branchID
+                    : undefined,
+              },
+              {
+                receivedBranchId:
+                  data.filters.orderType === "received"
+                    ? data.filters.branchID
+                    : undefined,
+              },
+              {
+                forwardedBranchId:
                   data.filters.orderType === "forwarded" &&
                   data.filters.inquiryBranchesIDs
-                    ? { in: data.filters.inquiryBranchesIDs }
+                    ? {in: data.filters.inquiryBranchesIDs}
                     : data.filters.orderType === "forwarded"
-                    ? data.loggedInUser.branchId
+                    ? {not: null}
                     : undefined,
               },
               {
                 receivedBranchId:
                   data.filters.orderType === "receiving" &&
                   data.filters.inquiryBranchesIDs
-                    ? { in: data.filters.inquiryBranchesIDs }
+                    ? {in: data.filters.inquiryBranchesIDs}
                     : data.filters.orderType === "receiving"
-                    ? data.loggedInUser.branchId
+                    ? {not: null}
                     : undefined,
               },
             ],
@@ -1103,7 +1010,7 @@ export class OrdersRepository {
               // Filter by status
               {
                 status: data.filters.statuses
-                  ? { in: data.filters.statuses }
+                  ? {in: data.filters.statuses}
                   : undefined,
               },
               {
@@ -1125,7 +1032,7 @@ export class OrdersRepository {
                 status:
                   data.filters.status === "RETURNED" &&
                   data.loggedInUser?.role === "RECEIVING_AGENT"
-                    ? { in: ["RETURNED", "REPLACED", "PARTIALLY_RETURNED"] }
+                    ? {in: ["RETURNED", "REPLACED", "PARTIALLY_RETURNED"]}
                     : data.filters.status,
               },
               // Filter by deliveryType
@@ -1169,7 +1076,7 @@ export class OrdersRepository {
                   id:
                     data.loggedInUser?.role === "CLIENT_ASSISTANT" ||
                     data.loggedInUser?.role === "EMPLOYEE_CLIENT_ASSISTANT"
-                      ? { in: data.filters.inquiryStoresIDs }
+                      ? {in: data.filters.inquiryStoresIDs}
                       : data.filters.storeID,
                 },
               },
@@ -1198,7 +1105,7 @@ export class OrdersRepository {
               },
               {
                 receiptNumber: data.filters.receiptNumbers
-                  ? { in: data.filters.receiptNumbers }
+                  ? {in: data.filters.receiptNumbers}
                   : undefined,
               },
               // Filter by recipientName
@@ -1371,10 +1278,10 @@ export class OrdersRepository {
                     AND:
                       data.filters.deliveryAgentReport === "true"
                         ? [
-                            { deliveryAgentReport: { isNot: null } },
+                            {deliveryAgentReport: {isNot: null}},
                             {
                               deliveryAgentReport: {
-                                report: { deleted: false },
+                                report: {deleted: false},
                               },
                             },
                           ]
@@ -1384,10 +1291,10 @@ export class OrdersRepository {
                     OR:
                       data.filters.deliveryAgentReport === "false"
                         ? [
-                            { deliveryAgentReport: { is: null } },
+                            {deliveryAgentReport: {is: null}},
                             {
                               deliveryAgentReport: {
-                                report: { deleted: true },
+                                report: {deleted: true},
                               },
                             },
                           ]
@@ -1402,9 +1309,9 @@ export class OrdersRepository {
                     AND:
                       data.filters.governorateReport === "true"
                         ? [
-                            { governorateReport: { isNot: null } },
+                            {governorateReport: {isNot: null}},
                             {
-                              governorateReport: { report: { deleted: false } },
+                              governorateReport: {report: {deleted: false}},
                             },
                           ]
                         : undefined,
@@ -1413,9 +1320,9 @@ export class OrdersRepository {
                     OR:
                       data.filters.governorateReport === "false"
                         ? [
-                            { governorateReport: { is: null } },
+                            {governorateReport: {is: null}},
                             {
-                              governorateReport: { report: { deleted: true } },
+                              governorateReport: {report: {deleted: true}},
                             },
                           ]
                         : undefined,
@@ -1482,39 +1389,42 @@ export class OrdersRepository {
                 },
               },
               {
-                OR: data.filters.orderType
-                  ? []
-                  : data.filters.governorate &&
-                    data.filters.governorateReport === "false"
-                  ? [
-                      {
-                        branch: {
-                          governorate: data.filters.governorate,
+                OR:
+                  data.filters.orderType && data.filters.orderType !== "inside"
+                    ? []
+                    : data.filters.governorate &&
+                      data.filters.governorateReport === "false"
+                    ? [
+                        {
+                          branch: {
+                            governorate: data.filters.governorate,
+                          },
                         },
-                      },
-                    ]
-                  : [
-                      {
-                        branch: data.filters.inquiryBranchesIDs
-                          ? {
-                              id: {
-                                in: data.filters.inquiryBranchesIDs,
-                              },
-                            }
-                          : {
-                              id: data.filters.branchID,
-                            },
-                      },
-                      {
-                        client:
-                          data.loggedInUser?.role !== "COMPANY_MANAGER" &&
-                          !data.loggedInUser?.mainRepository
+                      ]
+                    : data.loggedInUser?.role !== "DELIVERY_AGENT"
+                    ? [
+                        {
+                          branch: data.filters.inquiryBranchesIDs
                             ? {
-                                branchId: data.loggedInUser?.branchId,
+                                id: {
+                                  in: data.filters.inquiryBranchesIDs,
+                                },
                               }
-                            : undefined,
-                      },
-                    ],
+                            : {
+                                id: data.filters.branchID,
+                              },
+                        },
+                        {
+                          client:
+                            data.loggedInUser?.role !== "COMPANY_MANAGER" &&
+                            !data.loggedInUser?.mainRepository
+                              ? {
+                                  branchId: data.loggedInUser?.branchId,
+                                }
+                              : undefined,
+                        },
+                      ]
+                    : undefined,
               },
               {
                 governorate:
@@ -1524,21 +1434,106 @@ export class OrdersRepository {
                     : data.filters.governorate,
               },
               {
-                repository: {
-                  id: data.filters.repositoryID,
+                repository:
+                  data.filters.secondaryStatus === "IN_REPOSITORY"
+                    ? {
+                        mainRepository: false,
+                      }
+                    : data.filters.secondaryStatus === "IN_CAR"
+                    ? {
+                        mainRepository: true,
+                      }
+                    : {
+                        id: data.filters.repositoryID,
+                      },
+              },
+              {
+                secondaryStatus:
+                  data.filters.secondaryStatus === "WITH_AGENT"
+                    ? "WITH_AGENT"
+                    : data.filters.secondaryStatus === "IN_REPOSITORY" ||
+                      data.filters.secondaryStatus === "IN_CAR"
+                    ? "IN_REPOSITORY"
+                    : data.filters.secondaryStatus,
+              },
+              {
+                timeline: {
+                  some: data.filters.updateBy
+                    ? {
+                        by: {
+                          path: ["id"],
+                          equals: data.filters.updateBy, // number: 295
+                        },
+                      }
+                    : data.filters.createdBy
+                    ? {
+                        type: "ORDER_CREATION",
+                        by: {
+                          path: ["id"],
+                          equals: data.filters.createdBy, // number: 295
+                        },
+                      }
+                    : undefined,
                 },
               },
+
+              // {
+              //   forwardedBranchId:
+              //     data.filters.orderType === "forwarded"
+              //       ? data.filters.branchID
+              //       : undefined,
+              // },
+              // {
+              //   receivedBranchId:
+              //     data.filters.orderType === "received"
+              //       ? data.filters.branchID
+              //       : undefined,
+              // },
               {
-                forwardedBranchId:
-                  data.filters.orderType === "forwarded"
-                    ? data.filters.branchID
-                    : undefined,
-              },
-              {
-                receivedBranchId:
+                OR: [
+                  {
+                    AND: [
+                      {
+                        forwardedBranchId:
+                          data.filters.orderType === "forwarded"
+                            ? data.filters.branchID
+                            : undefined,
+                      },
+                      {
+                        receivedBranchId:
+                          data.filters.orderType === "received"
+                            ? data.filters.branchID
+                            : undefined,
+                      },
+                    ],
+                  },
+                  data.filters.orderType === "forwarded" ||
                   data.filters.orderType === "received"
-                    ? data.filters.branchID
-                    : undefined,
+                    ? {
+                        AND: [
+                          {
+                            branch: {
+                              id: data.filters.branchID,
+                              governorate: "BAGHDAD",
+                            },
+                          },
+
+                          {
+                            receivedBranchId: null,
+                          },
+                          {
+                            forwardedBranchId: null,
+                          },
+                        ],
+                      }
+                    : {},
+                  // {
+                  //   branch: {
+                  //     governorate: "BAGHDAD",
+                  //     id: data.filters.branchID,
+                  //   },
+                  // },
+                ],
               },
               {
                 forwardedBranchId:
@@ -1560,6 +1555,8 @@ export class OrdersRepository {
                       data.loggedInUser?.role !== "COMPANY_MANAGER" &&
                       !data.loggedInUser?.mainCompany
                     ? data.filters.branchID
+                    : data.filters.orderType === "inside"
+                    ? {equals: null}
                     : undefined,
               },
               {
@@ -1582,6 +1579,8 @@ export class OrdersRepository {
                     ? data.filters.branchID
                     : data.filters.orderType === "receivedAll"
                     ? data.loggedInUser?.branchId
+                    : data.filters.orderType === "inside"
+                    ? {equals: null}
                     : undefined,
               },
             ],
@@ -1605,7 +1604,6 @@ export class OrdersRepository {
                         some: {
                           receivingAgentId: data.loggedInUser.id,
                           report: {
-                            confirmed: false,
                             deleted: false,
                           },
                         },
@@ -1625,15 +1623,13 @@ export class OrdersRepository {
                       data.loggedInUser?.role === "INQUIRY_EMPLOYEE" ||
                       data.loggedInUser?.role === "EMPLOYEE_CLIENT_ASSISTANT" ||
                       data.loggedInUser?.role === "CLIENT_ASSISTANT") &&
-                    !data.filters.receiptNumber
+                    !data.filters.receiptNumber &&
+                    !data.filters.search
                       ? [
                           {
                             clientReport: {
                               none: {
                                 secondaryType: "DELIVERED",
-                                report: {
-                                  confirmed: true,
-                                },
                               },
                             },
                             status: {
@@ -1644,9 +1640,6 @@ export class OrdersRepository {
                             clientReport: {
                               none: {
                                 secondaryType: "RETURNED",
-                                report: {
-                                  confirmed: true,
-                                },
                               },
                             },
                             status: {
@@ -1662,13 +1655,13 @@ export class OrdersRepository {
                         !data.filters.receiptNumber
                       ? [
                           {
-                            deliveryAgentReport: { is: null },
+                            deliveryAgentReport: {is: null},
                             status: {
                               notIn: ["RETURNED"],
                             },
                           },
                           {
-                            deliveryAgentReport: { report: { deleted: true } },
+                            deliveryAgentReport: {report: {deleted: true}},
                             status: {
                               notIn: ["RETURNED"],
                             },
@@ -1691,13 +1684,13 @@ export class OrdersRepository {
                             branch: {
                               id: data.loggedInUser.branchId,
                             },
-                            status: { not: "WITH_RECEIVING_AGENT" },
+                            status: {not: "WITH_RECEIVING_AGENT"},
                           },
                           {
                             client: {
                               branchId: data.loggedInUser?.branchId,
                             },
-                            status: { not: "WITH_RECEIVING_AGENT" },
+                            status: {not: "WITH_RECEIVING_AGENT"},
                           },
                           {
                             status: "WITH_RECEIVING_AGENT",
@@ -1706,7 +1699,14 @@ export class OrdersRepository {
                             },
                           },
                         ]
-                      : data.loggedInUser?.role !== "COMPANY_MANAGER"
+                      : data.loggedInUser?.role !== "COMPANY_MANAGER" &&
+                        data.loggedInUser?.role !== "CLIENT" &&
+                        data.loggedInUser?.role !== "RECEIVING_AGENT" &&
+                        data.loggedInUser?.role !== "CLIENT_ASSISTANT" &&
+                        data.loggedInUser?.role !== "INQUIRY_EMPLOYEE" &&
+                        data.loggedInUser?.role !==
+                          "EMPLOYEE_CLIENT_ASSISTANT" &&
+                        data.loggedInUser?.role !== "DELIVERY_AGENT"
                       ? [
                           {
                             branch: {
@@ -1746,7 +1746,6 @@ export class OrdersRepository {
                       some: {
                         receivingAgentId: data.loggedInUser.id,
                         report: {
-                          confirmed: false,
                           deleted: false,
                         },
                       },
@@ -1762,18 +1761,17 @@ export class OrdersRepository {
             : {
                 ...where,
                 OR:
-                  data.loggedInUser?.role === "CLIENT" ||
-                  data.loggedInUser?.role === "INQUIRY_EMPLOYEE" ||
-                  data.loggedInUser?.role === "EMPLOYEE_CLIENT_ASSISTANT" ||
-                  data.loggedInUser?.role === "CLIENT_ASSISTANT"
+                  (data.loggedInUser?.role === "CLIENT" ||
+                    data.loggedInUser?.role === "INQUIRY_EMPLOYEE" ||
+                    data.loggedInUser?.role === "EMPLOYEE_CLIENT_ASSISTANT" ||
+                    data.loggedInUser?.role === "CLIENT_ASSISTANT") &&
+                  !data.filters.receiptNumber &&
+                  !data.filters.search
                     ? [
                         {
                           clientReport: {
                             none: {
                               secondaryType: "DELIVERED",
-                              report: {
-                                confirmed: true,
-                              },
                             },
                           },
                           status: {
@@ -1784,9 +1782,6 @@ export class OrdersRepository {
                           clientReport: {
                             none: {
                               secondaryType: "RETURNED",
-                              report: {
-                                confirmed: true,
-                              },
                             },
                           },
                           status: {
@@ -1797,13 +1792,13 @@ export class OrdersRepository {
                     : data.loggedInUser?.role === "DELIVERY_AGENT"
                     ? [
                         {
-                          deliveryAgentReport: { is: null },
+                          deliveryAgentReport: {is: null},
                           status: {
                             notIn: ["RETURNED"],
                           },
                         },
                         {
-                          deliveryAgentReport: { report: { deleted: true } },
+                          deliveryAgentReport: {report: {deleted: true}},
                           status: {
                             notIn: ["RETURNED"],
                           },
@@ -1822,13 +1817,13 @@ export class OrdersRepository {
                           branch: {
                             id: data.loggedInUser.branchId,
                           },
-                          status: { not: "WITH_RECEIVING_AGENT" },
+                          status: {not: "WITH_RECEIVING_AGENT"},
                         },
                         {
                           client: {
                             branchId: data.loggedInUser?.branchId,
                           },
-                          status: { not: "WITH_RECEIVING_AGENT" },
+                          status: {not: "WITH_RECEIVING_AGENT"},
                         },
                         {
                           status: "WITH_RECEIVING_AGENT",
@@ -1837,7 +1832,8 @@ export class OrdersRepository {
                           },
                         },
                       ]
-                    : data.loggedInUser?.role !== "COMPANY_MANAGER"
+                    : data.loggedInUser?.role !== "COMPANY_MANAGER" &&
+                      data.loggedInUser?.role !== "RECEIVING_AGENT"
                     ? [
                         {
                           branch: {
@@ -1872,7 +1868,7 @@ export class OrdersRepository {
         Object.keys(OrderStatus) as Array<keyof typeof OrderStatus>
       ).map((status) => {
         const statusCount = ordersMetaDataGroupByStatus.find(
-          (orderStatus: { status: string }) => {
+          (orderStatus: {status: string}) => {
             return orderStatus.status === status;
           }
         );
@@ -1946,7 +1942,7 @@ export class OrdersRepository {
       Object.keys(OrderStatus) as Array<keyof typeof OrderStatus>
     ).map((status) => {
       const statusCount = ordersMetaDataGroupByStatus.find(
-        (orderStatus: { status: string }) => {
+        (orderStatus: {status: string}) => {
           return orderStatus.status === status;
         }
       );
@@ -1975,7 +1971,327 @@ export class OrdersRepository {
     };
   }
 
-  async getOrdersByIDs(data: { ordersIDs: string[] }) {
+  async getAllOrdersPaginatedApiKey(data: {
+    filters: OrdersFiltersType | ReportCreateOrdersFiltersType;
+    loggedInUser: loggedInUserType | undefined;
+  }) {
+    let startDate = new Date();
+    let endDate = new Date();
+
+    if (data.filters.startDate) {
+      startDate = new Date(data.filters.startDate);
+      startDate.setUTCDate(startDate.getUTCDate() - 1);
+      startDate.setHours(21, 0, 0, 0);
+    }
+    if (data.filters.endDate) {
+      endDate = new Date(data.filters.endDate);
+      endDate.setHours(21, 0, 0, 0);
+    }
+
+    const where = {
+      AND: [
+        {
+          OR: [
+            {
+              receiptNumber: data.filters.search
+                ? data.filters.search
+                : undefined,
+            },
+            {
+              branchReportId: data.filters.search
+                ? Number.isNaN(+data.filters.search)
+                  ? undefined
+                  : data.filters.search.length > 9
+                  ? undefined
+                  : +data.filters.search
+                : undefined,
+            },
+            {
+              clientReport: data.filters.search
+                ? Number.isNaN(+data.filters.search)
+                  ? undefined
+                  : data.filters.search.length > 9
+                  ? undefined
+                  : {
+                      some: {
+                        id: +data.filters.search,
+                      },
+                    }
+                : undefined,
+            },
+            {
+              repositoryReport: data.filters.search
+                ? Number.isNaN(+data.filters.search)
+                  ? undefined
+                  : data.filters.search.length > 9
+                  ? undefined
+                  : {
+                      some: {
+                        id: +data.filters.search,
+                      },
+                    }
+                : undefined,
+            },
+            {
+              companyReport: data.filters.search
+                ? Number.isNaN(+data.filters.search)
+                  ? undefined
+                  : data.filters.search.length > 9
+                  ? undefined
+                  : {
+                      some: {
+                        id: +data.filters.search,
+                      },
+                    }
+                : undefined,
+            },
+            {
+              deliveryAgentReportId: data.filters.search
+                ? Number.isNaN(+data.filters.search)
+                  ? undefined
+                  : data.filters.search.length > 9
+                  ? undefined
+                  : +data.filters.search
+                : undefined,
+            },
+            {
+              governorateReportId: data.filters.search
+                ? Number.isNaN(+data.filters.search)
+                  ? undefined
+                  : data.filters.search.length > 9
+                  ? undefined
+                  : +data.filters.search
+                : undefined,
+            },
+            {
+              recipientName: {
+                contains: data.filters.search,
+                mode: "insensitive",
+              },
+            },
+            {
+              recipientPhones: data.filters.search
+                ? {
+                    has: data.filters.search,
+                  }
+                : undefined,
+            },
+            {
+              recipientAddress: {
+                contains: data.filters.search,
+                mode: "insensitive",
+              },
+            },
+          ],
+        },
+        {
+          confirmed: data.filters.confirmed,
+        },
+        // Filter by orderID
+        {
+          id: data.filters.orderID,
+        },
+        // Filter by status
+        {
+          status: data.filters.statuses
+            ? {in: data.filters.statuses}
+            : undefined,
+        },
+
+        {
+          status: data.filters.status,
+        },
+        // Filter by deliveryType
+        {
+          deliveryType: data.filters.deliveryType,
+        },
+        // Filter by deliveryDate
+        {
+          // gte deliveryDate day start time (00:00:00) and lte deliveryDate day end time (23:59:59)
+          updatedAt: data.filters.deliveryDate
+            ? {
+                gte: new Date(
+                  new Date(data.filters.deliveryDate).setHours(0, 0, 0, 0)
+                ),
+                lte: new Date(
+                  new Date(data.filters.deliveryDate).setHours(23, 59, 59, 999)
+                ),
+              }
+            : undefined,
+        },
+        // Filter by clientID
+        {
+          client: {
+            id: data.filters.clientID,
+          },
+        },
+        // Filter by storeID
+        {
+          store: {
+            id: data.filters.storeID,
+          },
+        },
+        // Filter by locationID
+        {
+          location: {
+            id: data.filters.locationID,
+          },
+        },
+        {
+          receiptNumber: data.filters.receiptNumber,
+        },
+        {
+          printed: data.filters.printed,
+        },
+        {
+          receiptNumber: data.filters.receiptNumbers
+            ? {in: data.filters.receiptNumbers}
+            : undefined,
+        },
+        // Filter by recipientName
+        {
+          recipientName: data.filters.recipientName,
+        },
+        // Filter by recipientPhone
+        {
+          recipientPhones: data.filters.recipientPhone
+            ? {
+                has: data.filters.recipientPhone,
+              }
+            : undefined,
+        },
+        // Filter by recipientAddress
+        {
+          recipientAddress: data.filters.recipientAddress,
+        },
+        // Filter by notes
+        {
+          notes: data.filters.notes,
+        },
+        // Filter by startDate
+        {
+          createdAt: data.filters.startDate
+            ? {
+                gt: startDate,
+              }
+            : undefined,
+        },
+        // Filter by endDate
+        {
+          createdAt: data.filters.endDate
+            ? {
+                lt: endDate,
+              }
+            : undefined,
+        },
+        // Filter by deleted
+        {
+          deleted: data.filters.deleted,
+        },
+        // Filter by clientReport
+        {
+          AND: [
+            data.filters.clientReport === "true"
+              ? {
+                  clientReport: {
+                    some: {
+                      secondaryType:
+                        data.filters.delivered &&
+                        data.filters.orderType === "forwarded"
+                          ? "DELIVERED"
+                          : undefined,
+                      report: {
+                        deleted: false,
+                      },
+                    },
+                  },
+                }
+              : {},
+            {
+              OR:
+                data.filters.clientReport === "false"
+                  ? [
+                      {
+                        clientReport: {
+                          none: {
+                            secondaryType: data.filters.delivered
+                              ? "DELIVERED"
+                              : undefined,
+                          },
+                        },
+                      },
+                      {
+                        clientReport: {
+                          some: {
+                            report: {
+                              deleted: true,
+                            },
+                          },
+                        },
+                      },
+                    ]
+                  : undefined,
+            },
+          ],
+        },
+
+        {
+          governorate: data.filters.governorate,
+        },
+
+        {
+          secondaryStatus: data.filters.secondaryStatus,
+        },
+      ],
+    } satisfies Prisma.OrderWhereInput;
+
+    const paginatedOrders = await prisma.order.findManyPaginated(
+      {
+        where: {
+          ...where,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: orderSelectApiKey,
+      },
+      {
+        page: data.filters.page,
+        size: data.filters.size,
+      }
+    );
+
+    const ordersReformed = paginatedOrders.data.map(orderReformApiKey);
+
+    const ordersMetaDataAggregate = await prisma.order.aggregate({
+      where: where,
+      _count: {
+        id: true,
+      },
+      _sum: {
+        totalCost: true,
+        paidAmount: true,
+        clientNet: true,
+        deliveryAgentNet: true,
+        companyNet: true,
+        deliveryCost: true,
+      },
+    });
+
+    const ordersMetaDataReformed = {
+      count: ordersMetaDataAggregate._count.id,
+      totalCost: ordersMetaDataAggregate._sum.totalCost || 0,
+      paidAmount: ordersMetaDataAggregate._sum.paidAmount || 0,
+      clientNet: ordersMetaDataAggregate._sum.clientNet || 0,
+    };
+
+    return {
+      orders: ordersReformed,
+      ordersMetaData: ordersMetaDataReformed,
+      pagesCount: paginatedOrders.pagesCount,
+    };
+  }
+  async getOrdersByIDs(data: {ordersIDs: string[]}) {
     const orders = await prisma.order.findMany({
       where: {
         id: {
@@ -1983,14 +2299,14 @@ export class OrdersRepository {
         },
       },
       orderBy: {
-        id: "asc",
+        createdAt: "desc",
       },
-      select: { ...orderSelect },
+      select: {...orderSelect},
     });
     return orders.map(orderReform);
   }
 
-  async getOrder(data: { orderID: string }) {
+  async getOrder(data: {orderID: string}) {
     const order = await prisma.order.findFirst({
       where: {
         receiptNumber: data.orderID,
@@ -2075,7 +2391,7 @@ export class OrdersRepository {
     // };
   }
 
-  async getOrderById(data: { orderID: string }) {
+  async getOrderById(data: {orderID: string}) {
     const order = await prisma.order.findUnique({
       where: {
         id: data.orderID,
@@ -2088,7 +2404,20 @@ export class OrdersRepository {
     return reformedOrder;
   }
 
-  async getOrderByReceiptNumber(data: { orderReceiptNumber: string }) {
+  async getOrderByIdApiKey(data: {orderID: string}) {
+    const order = await prisma.order.findUnique({
+      where: {
+        id: data.orderID,
+        deleted: false,
+      },
+      select: orderSelectApiKey,
+    });
+
+    const reformedOrder = orderReformApiKey(order);
+    return reformedOrder;
+  }
+
+  async getOrderByReceiptNumber(data: {orderReceiptNumber: string}) {
     const order = await prisma.order.findFirst({
       where: {
         receiptNumber: data.orderReceiptNumber,
@@ -2104,6 +2433,7 @@ export class OrdersRepository {
 
   async updateOrdersCosts(data: {
     ordersIDs: string[];
+    clientId?: number;
     costs: {
       baghdadDeliveryCost?: number;
       governoratesDeliveryCost?: number;
@@ -2111,10 +2441,7 @@ export class OrdersRepository {
       reportType?: ReportType;
     };
   }) {
-    if (
-      data.costs.baghdadDeliveryCost &&
-      data.costs.reportType === ReportType.CLIENT
-    ) {
+    if (data.costs.reportType === ReportType.CLIENT) {
       // Get Baghdad orders
       const baghdadOrders = await prisma.order.findMany({
         where: {
@@ -2127,6 +2454,7 @@ export class OrdersRepository {
           id: true,
           paidAmount: true,
           weight: true,
+          deliveryCost: true,
           company: {
             select: {
               additionalPriceForEvery500000IraqiDinar: true,
@@ -2140,7 +2468,8 @@ export class OrdersRepository {
       // Update Baghdad orders costs
       for (const order of baghdadOrders) {
         // const weight = order.weight || 0;
-        const deliveryCost = data.costs.baghdadDeliveryCost || 0;
+        const deliveryCost =
+          data.costs.baghdadDeliveryCost || order.deliveryCost;
         // let weightedDeliveryCost =
         //   deliveryCost +
         //   weight * order.company?.additionalPriceForEveryKilogram;
@@ -2165,10 +2494,7 @@ export class OrdersRepository {
       }
     }
 
-    if (
-      data.costs.governoratesDeliveryCost &&
-      data.costs.reportType === ReportType.CLIENT
-    ) {
+    if (data.costs.reportType === ReportType.CLIENT) {
       // get governorates orders
       const governoratesOrders = await prisma.order.findMany({
         where: {
@@ -2182,6 +2508,7 @@ export class OrdersRepository {
         select: {
           id: true,
           paidAmount: true,
+          deliveryCost: true,
           weight: true,
           company: {
             select: {
@@ -2196,7 +2523,8 @@ export class OrdersRepository {
       // Update governorates orders costs
       for (const order of governoratesOrders) {
         // const weight = order.weight || 0;
-        const deliveryCost = data.costs.baghdadDeliveryCost || 0;
+        const deliveryCost =
+          data.costs.governoratesDeliveryCost || order.deliveryCost;
         // let weightedDeliveryCost =
         //   deliveryCost +
         //   weight * order.company?.additionalPriceForEveryKilogram;
@@ -2251,7 +2579,6 @@ export class OrdersRepository {
         });
       }
     }
-
     if (
       data.costs.governoratesDeliveryCost &&
       data.costs.reportType === ReportType.BRANCH
@@ -2285,6 +2612,68 @@ export class OrdersRepository {
         });
       }
     }
+
+    if (
+      !data.costs.baghdadDeliveryCost &&
+      !data.costs.governoratesDeliveryCost &&
+      data.costs.reportType === ReportType.BRANCH
+    ) {
+      // Get Baghdad orders
+      const orders = await prisma.order.findMany({
+        where: {
+          id: {
+            in: data.ordersIDs,
+          },
+        },
+        select: {
+          id: true,
+          paidAmount: true,
+          governorate: true,
+          weight: true,
+          client: {
+            select: {
+              governoratesDeliveryCosts: true,
+            },
+          },
+        },
+      });
+
+      // Update Baghdad orders costs
+      for (const order of orders) {
+        const governoratesDeliveryCosts = order.client
+          .governoratesDeliveryCosts as {
+          governorate: Governorate;
+          cost: number;
+        }[];
+
+        let deliveryCost: number | undefined = 0;
+
+        if (governoratesDeliveryCosts) {
+          deliveryCost =
+            governoratesDeliveryCosts.find(
+              (governorateDeliveryCost: {
+                governorate: Governorate;
+                cost: number;
+              }) => {
+                return (
+                  governorateDeliveryCost.governorate === order.governorate
+                );
+              }
+            )?.cost || 0;
+        }
+
+        await prisma.order.update({
+          where: {
+            id: order.id,
+          },
+          data: {
+            branchNet: order.paidAmount - deliveryCost,
+            branchDeliveryCost: deliveryCost,
+          },
+        });
+      }
+    }
+
     // Update delivery agent delivery cost
     if (data.costs.deliveryAgentDeliveryCost) {
       // get orders
@@ -2538,7 +2927,7 @@ export class OrdersRepository {
         processed: data.orderData.processed,
         processedAt: data.orderData.processed ? new Date() : undefined,
         processedBy: data.orderData.processed
-          ? { connect: { id: data.loggedInUser.id } }
+          ? {connect: {id: data.loggedInUser.id}}
           : undefined,
         deliveryAgent:
           // unlink delivery agent if null
@@ -2607,7 +2996,7 @@ export class OrdersRepository {
     // const initialMessages=await this.getChatMessages(orderId,userId)
 
     chatMembers.forEach((member) => {
-      io.to(`${member}`).emit("newUpdate", { id: order.id });
+      io.to(`${member}`).emit("newUpdate", {id: order.id});
     });
 
     const RECEIVING_AGENT = await prisma.employee.findMany({
@@ -2625,13 +3014,13 @@ export class OrdersRepository {
     });
 
     RECEIVING_AGENT.map((e) => {
-      io.to(`${e.id}`).emit("newUpdate", { id: order.id });
+      io.to(`${e.id}`).emit("newUpdate", {id: order.id});
     });
 
     return orderReform(order);
   }
 
-  async deleteOrder(data: { orderID: string }) {
+  async deleteOrder(data: {orderID: string}) {
     const deletedOrder = await prisma.order.delete({
       where: {
         id: data.orderID,
@@ -2640,7 +3029,7 @@ export class OrdersRepository {
     return deletedOrder;
   }
 
-  async deactivateOrder(data: { orderID: string; deletedByID: number }) {
+  async deactivateOrder(data: {orderID: string; deletedByID: number}) {
     const deletedOrder = await prisma.order.update({
       where: {
         id: data.orderID,
@@ -2658,7 +3047,7 @@ export class OrdersRepository {
     return deletedOrder;
   }
 
-  async reactivateOrder(data: { orderID: string }) {
+  async reactivateOrder(data: {orderID: string}) {
     const deletedOrder = await prisma.order.update({
       where: {
         id: data.orderID,
@@ -2684,6 +3073,9 @@ export class OrdersRepository {
                       in: data.filters.inquiryStatuses,
                     }
                   : undefined,
+              },
+              {
+                deleted: false,
               },
               {
                 governorate: data.filters.inquiryGovernorates
@@ -2743,18 +3135,18 @@ export class OrdersRepository {
                 forwardedBranchId:
                   data.filters.orderType === "forwarded" &&
                   data.filters.inquiryBranchesIDs
-                    ? { in: data.filters.inquiryBranchesIDs }
+                    ? {in: data.filters.inquiryBranchesIDs}
                     : data.filters.orderType === "forwarded"
-                    ? data.loggedInUser.branchId
+                    ? {not: null}
                     : undefined,
               },
               {
                 receivedBranchId:
                   data.filters.orderType === "receiving" &&
                   data.filters.inquiryBranchesIDs
-                    ? { in: data.filters.inquiryBranchesIDs }
+                    ? {in: data.filters.inquiryBranchesIDs}
                     : data.filters.orderType === "receiving"
-                    ? data.loggedInUser.branchId
+                    ? {not: null}
                     : undefined,
               },
             ],
@@ -2795,21 +3187,21 @@ export class OrdersRepository {
                 storeId:
                   data.loggedInUser.role === "CLIENT_ASSISTANT" ||
                   data.loggedInUser.role === "EMPLOYEE_CLIENT_ASSISTANT"
-                    ? { in: data.filters.inquiryStoresIDs }
+                    ? {in: data.filters.inquiryStoresIDs}
                     : data.filters.storeID,
               },
               {
                 governorateReport: data.filters.governorateReport
-                  ? { isNot: null }
+                  ? {isNot: null}
                   : data.filters.governorateReport
-                  ? { is: null }
+                  ? {is: null}
                   : undefined,
               },
               {
                 deliveryAgentReport: data.filters.deliveryAgentReport
-                  ? { isNot: null }
+                  ? {isNot: null}
                   : data.filters.deliveryAgentReport
-                  ? { is: null }
+                  ? {is: null}
                   : undefined,
               },
               {
@@ -2920,9 +3312,6 @@ export class OrdersRepository {
                   clientReport: {
                     none: {
                       secondaryType: "DELIVERED",
-                      report: {
-                        confirmed: true,
-                      },
                     },
                   },
                   status: {
@@ -2933,9 +3322,6 @@ export class OrdersRepository {
                   clientReport: {
                     none: {
                       secondaryType: "RETURNED",
-                      report: {
-                        confirmed: true,
-                      },
                     },
                   },
                   status: {
@@ -2946,13 +3332,13 @@ export class OrdersRepository {
             : data.loggedInUser.role === "DELIVERY_AGENT"
             ? [
                 {
-                  deliveryAgentReport: { is: null },
+                  deliveryAgentReport: {is: null},
                   status: {
                     notIn: ["RETURNED"],
                   },
                 },
                 {
-                  deliveryAgentReport: { report: { deleted: true } },
+                  deliveryAgentReport: {report: {deleted: true}},
                   status: {
                     notIn: ["RETURNED"],
                   },
@@ -2971,13 +3357,13 @@ export class OrdersRepository {
                   branch: {
                     id: data.loggedInUser.branchId,
                   },
-                  status: { not: "WITH_RECEIVING_AGENT" },
+                  status: {not: "WITH_RECEIVING_AGENT"},
                 },
                 {
                   client: {
                     branchId: data.loggedInUser?.branchId,
                   },
-                  status: { not: "WITH_RECEIVING_AGENT" },
+                  status: {not: "WITH_RECEIVING_AGENT"},
                 },
                 {
                   status: "WITH_RECEIVING_AGENT",
@@ -2986,7 +3372,8 @@ export class OrdersRepository {
                   },
                 },
               ]
-            : data.loggedInUser?.role !== "COMPANY_MANAGER"
+            : data.loggedInUser?.role !== "COMPANY_MANAGER" &&
+              data.loggedInUser?.role !== "RECEIVING_AGENT"
             ? [
                 {
                   branch: {
@@ -3065,8 +3452,8 @@ export class OrdersRepository {
         where: {
           ...filtersReformed,
           OR: [
-            { deliveryAgentReport: { is: null } },
-            { deliveryAgentReport: { report: { deleted: true } } },
+            {deliveryAgentReport: {is: null}},
+            {deliveryAgentReport: {report: {deleted: true}}},
           ],
           status: {
             in: ["DELIVERED", "PARTIALLY_RETURNED", "REPLACED"],
@@ -3103,26 +3490,18 @@ export class OrdersRepository {
       });
 
     const todayOrdersStatistics = await prisma.order.aggregate({
-      _sum: {
-        totalCost: true,
-      },
-      _count: {
-        id: true,
-      },
+      _sum: {totalCost: true},
+      _count: {id: true},
       where: {
         ...filtersReformed,
-        // deleted: false,
+        deleted: false,
         deliveryDate:
           data.loggedInUser.role === "DELIVERY_AGENT"
-            ? {
-                gte: new Date(new Date().setHours(0, 0, 0, 0)),
-              }
+            ? {gte: new Date(Date.now() - 22 * 60 * 60 * 1000)}
             : undefined,
         receivedAt:
           data.loggedInUser.role !== "DELIVERY_AGENT"
-            ? {
-                gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
-              }
+            ? {gte: new Date(Date.now() - 22 * 60 * 60 * 1000)}
             : undefined,
       },
     });
@@ -3141,7 +3520,7 @@ export class OrdersRepository {
   }
 
   async getOrderTimeline(data: {
-    params: { orderID: string | undefined };
+    params: {orderID: string | undefined};
     filters: OrderTimelineFiltersType;
   }) {
     const orderTimeline = await prisma.orderTimeline.findMany({
@@ -3149,15 +3528,29 @@ export class OrdersRepository {
         order: {
           id: data.params.orderID,
         },
-        type: data.filters.types
-          ? { in: data.filters.types }
-          : data.filters.type,
+        type: data.filters.types ? {in: data.filters.types} : data.filters.type,
       },
       select: orderTimelineSelect,
       orderBy: {
         createdAt: "asc",
       },
     });
+    return orderTimeline.map(orderTimelineReform);
+  }
+
+  async getOrderTimelineApiKey(data: {params: {orderID: string | undefined}}) {
+    const orderTimeline = await prisma.orderTimeline.findMany({
+      where: {
+        order: {
+          id: data.params.orderID,
+        },
+      },
+      select: orderTimelineSelect,
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
     return orderTimeline.map(orderTimelineReform);
   }
 
@@ -3173,7 +3566,7 @@ export class OrdersRepository {
           },
         },
         type: data.data.type,
-        by: JSON.stringify(data.data.by),
+        by: data.data.by,
         old: JSON.stringify(data.data.old),
         new: JSON.stringify(data.data.new),
         message: data.data.message,
@@ -3182,7 +3575,7 @@ export class OrdersRepository {
     });
   }
 
-  async getOrderChatMembers(data: { orderID: string }) {
+  async getOrderChatMembers(data: {orderID: string}) {
     const order = await prisma.order.findUnique({
       where: {
         id: data.orderID,
@@ -3283,7 +3676,7 @@ export class OrdersRepository {
     return chatMembers;
   }
 
-  async getOrderInquiryEmployees(data: { orderID: string | undefined }) {
+  async getOrderInquiryEmployees(data: {orderID: string | undefined}) {
     const order = await prisma.order.findUnique({
       where: {
         id: data.orderID,
@@ -3295,6 +3688,11 @@ export class OrdersRepository {
         locationId: true,
         status: true,
         governorate: true,
+        client: {
+          select: {
+            branchId: true,
+          },
+        },
         deliveryAgent: {
           select: {
             id: true,
@@ -3319,105 +3717,383 @@ export class OrdersRepository {
       avatar: string;
       role: string;
     }[] = [];
-    const inquiryEmployees =
-      (
-        await prisma.employee.findMany({
-          where: {
-            AND: [
-              { role: "INQUIRY_EMPLOYEE" },
-              {
-                OR: [
-                  {
-                    inquiryBranches: order?.branchId
-                      ? {
-                          some: {
-                            branchId: order.branchId,
-                          },
-                        }
-                      : undefined,
+
+    (
+      await prisma.employee.findMany({
+        where: {
+          AND: [
+            {deleted: false},
+            {role: "INQUIRY_EMPLOYEE"},
+            {
+              OR: [
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
                   },
-                  {
-                    id: order.branchId!!,
+                  orderType: null,
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.branchId!!],
+                      },
+                    },
                   },
-                ],
-              },
-              {
-                mainEmergency: false,
-              },
-            ],
-          },
-          select: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-                avatar: true,
-              },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.client.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: "receiving",
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: "forwarded",
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.client.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    none: {},
+                  },
+                },
+              ],
             },
-            inquiryStatuses: true,
-            inquiryGovernorates: true,
-            inquiryLocations: true,
-            inquiryStores: true,
-            inquiryDeliveryAgents: true,
-            role: true,
+            {
+              mainEmergency: false,
+            },
+          ],
+        },
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              avatar: true,
+            },
           },
-        })
-      ).forEach((inquiryEmployee) => {
-        const inquiryLocation = inquiryEmployee.inquiryLocations.find(
-          (e) => e.locationId === order.locationId
-        );
-        const inquiryStore = inquiryEmployee.inquiryStores.find(
-          (e) => e.storeId === order.storeId
-        );
-        const inquiryDelivery = inquiryEmployee.inquiryDeliveryAgents.find(
-          (e) => e.deliveryAgentId === order.deliveryAgent?.id
-        );
-        if (
-          inquiryEmployee.inquiryStatuses.length > 0 &&
-          !inquiryEmployee.inquiryStatuses.includes(order?.status)
-        ) {
-          return;
-        }
-        if (
-          inquiryEmployee.inquiryGovernorates.length > 0 &&
-          !inquiryEmployee.inquiryGovernorates.includes(order?.governorate)
-        ) {
-          return;
-        }
-        if (inquiryEmployee.inquiryStores.length > 0 && !inquiryStore) {
-          return;
-        }
-        if (inquiryEmployee.inquiryLocations.length > 0 && !inquiryLocation) {
-          return;
-        }
-        if (
-          inquiryEmployee.inquiryDeliveryAgents.length > 0 &&
-          order.deliveryAgent &&
-          !inquiryDelivery
-        ) {
-          return;
-        }
-        orderInquiryEmployees.push({
-          id: inquiryEmployee.user?.id ?? null,
-          name: inquiryEmployee.user?.name ?? null,
-          phone: inquiryEmployee.user?.phone ?? null,
-          avatar: inquiryEmployee.user?.avatar ?? null,
-          role: inquiryEmployee.role,
-        });
-        // return {
-        //   id: inquiryEmployee.user?.id ?? null,
-        //   name: inquiryEmployee.user?.name ?? null,
-        //   phone: inquiryEmployee.user?.phone ?? null,
-        //   avatar: inquiryEmployee.user?.avatar ?? null,
-        //   role: inquiryEmployee.role,
-        // };
-      }) ?? [];
+          inquiryStatuses: true,
+          inquiryGovernorates: true,
+          inquiryLocations: true,
+          inquiryStores: true,
+          inquiryDeliveryAgents: true,
+          role: true,
+        },
+      })
+    ).forEach((inquiryEmployee) => {
+      const inquiryLocation = inquiryEmployee.inquiryLocations.find(
+        (e) => e.locationId === order.locationId
+      );
+      const inquiryStore = inquiryEmployee.inquiryStores.find(
+        (e) => e.storeId === order.storeId
+      );
+      const inquiryDelivery = inquiryEmployee.inquiryDeliveryAgents.find(
+        (e) => e.deliveryAgentId === order.deliveryAgent?.id
+      );
+      if (
+        inquiryEmployee.inquiryStatuses.length > 0 &&
+        !inquiryEmployee.inquiryStatuses.includes(order?.status)
+      ) {
+        return;
+      }
+      if (
+        inquiryEmployee.inquiryGovernorates.length > 0 &&
+        !inquiryEmployee.inquiryGovernorates.includes(order?.governorate)
+      ) {
+        return;
+      }
+      if (inquiryEmployee.inquiryStores.length > 0 && !inquiryStore) {
+        return;
+      }
+      if (inquiryEmployee.inquiryLocations.length > 0 && !inquiryLocation) {
+        return;
+      }
+      if (
+        inquiryEmployee.inquiryDeliveryAgents.length > 0 &&
+        order.deliveryAgent &&
+        !inquiryDelivery
+      ) {
+        return;
+      }
+      orderInquiryEmployees.push({
+        id: inquiryEmployee.user?.id ?? null,
+        name: inquiryEmployee.user?.name ?? null,
+        phone: inquiryEmployee.user?.phone ?? null,
+        avatar: inquiryEmployee.user?.avatar ?? null,
+        role: inquiryEmployee.role,
+      });
+      // return {
+      //   id: inquiryEmployee.user?.id ?? null,
+      //   name: inquiryEmployee.user?.name ?? null,
+      //   phone: inquiryEmployee.user?.phone ?? null,
+      //   avatar: inquiryEmployee.user?.avatar ?? null,
+      //   role: inquiryEmployee.role,
+      // };
+    }) ?? [];
 
     return orderInquiryEmployees;
   }
 
-  async getOrderStatus(data: { orderID: string }) {
+  async getOrderInquiryEmployeesForNotifications(data: {
+    orderID: string | undefined;
+  }) {
+    const order = await prisma.order.findUnique({
+      where: {
+        id: data.orderID,
+      },
+      select: {
+        branchId: true,
+        storeId: true,
+        companyId: true,
+        locationId: true,
+        status: true,
+        governorate: true,
+        client: {
+          select: {
+            branchId: true,
+          },
+        },
+        deliveryAgent: {
+          select: {
+            id: true,
+          },
+        },
+        location: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new AppError("الطلب غير موجود", 404);
+    }
+
+    const orderInquiryEmployees: {
+      id: number;
+      name: string;
+      phone: string;
+      avatar: string;
+      role: string;
+    }[] = [];
+
+    (
+      await prisma.employee.findMany({
+        where: {
+          AND: [
+            {deleted: false},
+            {role: "INQUIRY_EMPLOYEE"},
+            {
+              OR: [
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.client.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: "receiving",
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: "forwarded",
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.client.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    none: {},
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              avatar: true,
+            },
+          },
+          inquiryStatuses: true,
+          inquiryGovernorates: true,
+          inquiryLocations: true,
+          inquiryStores: true,
+          inquiryDeliveryAgents: true,
+          role: true,
+        },
+      })
+    ).forEach((inquiryEmployee) => {
+      const inquiryLocation = inquiryEmployee.inquiryLocations.find(
+        (e) => e.locationId === order.locationId
+      );
+      const inquiryStore = inquiryEmployee.inquiryStores.find(
+        (e) => e.storeId === order.storeId
+      );
+      const inquiryDelivery = inquiryEmployee.inquiryDeliveryAgents.find(
+        (e) => e.deliveryAgentId === order.deliveryAgent?.id
+      );
+      if (
+        inquiryEmployee.inquiryStatuses.length > 0 &&
+        !inquiryEmployee.inquiryStatuses.includes(order?.status)
+      ) {
+        return;
+      }
+      if (
+        inquiryEmployee.inquiryGovernorates.length > 0 &&
+        !inquiryEmployee.inquiryGovernorates.includes(order?.governorate)
+      ) {
+        return;
+      }
+      if (inquiryEmployee.inquiryStores.length > 0 && !inquiryStore) {
+        return;
+      }
+      if (inquiryEmployee.inquiryLocations.length > 0 && !inquiryLocation) {
+        return;
+      }
+      if (
+        inquiryEmployee.inquiryDeliveryAgents.length > 0 &&
+        order.deliveryAgent &&
+        !inquiryDelivery
+      ) {
+        return;
+      }
+      orderInquiryEmployees.push({
+        id: inquiryEmployee.user?.id ?? null,
+        name: inquiryEmployee.user?.name ?? null,
+        phone: inquiryEmployee.user?.phone ?? null,
+        avatar: inquiryEmployee.user?.avatar ?? null,
+        role: inquiryEmployee.role,
+      });
+      // return {
+      //   id: inquiryEmployee.user?.id ?? null,
+      //   name: inquiryEmployee.user?.name ?? null,
+      //   phone: inquiryEmployee.user?.phone ?? null,
+      //   avatar: inquiryEmployee.user?.avatar ?? null,
+      //   role: inquiryEmployee.role,
+      // };
+    }) ?? [];
+
+    return orderInquiryEmployees;
+  }
+
+  async getOrderStatus(data: {orderID: string}) {
     const order = await prisma.order.findUnique({
       where: {
         id: data.orderID,

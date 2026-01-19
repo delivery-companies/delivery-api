@@ -16,6 +16,7 @@ router.route("/transactions").post(
   isLoggedIn,
   isAutherized([
     EmployeeRole.COMPANY_MANAGER,
+    EmployeeRole.BRANCH_MANAGER,
     EmployeeRole.ACCOUNTANT,
     AdminRole.ADMIN,
   ]),
@@ -56,6 +57,21 @@ router
       ...Object.values(ClientRole),
     ]),
     transactionsController.getAllTransactions
+  );
+
+router
+  .route("/receivingAgent-clients")
+  .get(
+    isLoggedIn,
+    isAutherized([
+      EmployeeRole.COMPANY_MANAGER,
+      EmployeeRole.ACCOUNTANT,
+      AdminRole.ADMIN,
+      AdminRole.ADMIN_ASSISTANT,
+      ...Object.values(EmployeeRole),
+      ...Object.values(ClientRole),
+    ]),
+    transactionsController.getReceivingAgent
   );
 
 router

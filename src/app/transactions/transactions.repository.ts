@@ -1,14 +1,16 @@
-import {TransactionType} from "@prisma/client";
 import {prisma} from "../../database/db";
 import type {
   TransactionCreateType,
   TransactionUpdateType,
 } from "./transactions.dto";
 import {transactionSelect} from "./transactions.responses";
+import {reportReform, reportSelect} from "../reports/reports.responses";
+import {loggedInUserType} from "../../types/user";
 
 export class TransactionsRepository {
   async createTransaction(
     companyId: number | undefined,
+    branchId: number | undefined,
     data: TransactionCreateType
   ) {
     if (!companyId) {
@@ -22,6 +24,7 @@ export class TransactionsRepository {
         for: data.for,
         employeeId: data.employeeId ?? null,
         createdById: data.createdById ?? null,
+        branchId: branchId,
         companyId,
       },
       select: transactionSelect,
@@ -34,16 +37,46 @@ export class TransactionsRepository {
     page: number;
     size: number;
     companyId?: number;
-    employeeId?: number;
-    type?: TransactionType;
+    deliveryAgentId?: number;
+    clientId?: number;
+    branchId?: number;
+    type?: string;
+    start_date?: string;
+    end_date?: string;
+    loggedInUser?: loggedInUserType;
   }) {
-    const where = {
-      companyId: filters.companyId,
-      createdById: filters.employeeId,
-      type: filters.type ? filters.type : undefined,
-    };
+    let startDate = new Date();
+    let endDate = new Date();
 
-    const receivedFromAgents = await prisma.report.aggregate({
+    const isMainRepository =
+      filters.loggedInUser?.mainRepository ||
+      filters.loggedInUser?.role === "COMPANY_MANAGER";
+
+    const mainBranch = await prisma.branch.findFirst({
+      where: {
+        companyId: filters.companyId,
+        repositories: {
+          some: {
+            mainRepository: true,
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (filters.start_date) {
+      startDate = new Date(filters.start_date);
+      startDate.setUTCDate(startDate.getUTCDate() - 1);
+      startDate.setHours(21, 0, 0, 0);
+    }
+    if (filters.end_date) {
+      endDate = new Date(filters.end_date);
+      endDate.setHours(21, 0, 0, 0);
+    }
+
+    const receivedFromAgents = await prisma.order.aggregate({
       _sum: {
         companyNet: true,
       },
@@ -51,8 +84,77 @@ export class TransactionsRepository {
         id: true,
       },
       where: {
-        companyId: filters.companyId,
-        type: "DELIVERY_AGENT",
+        AND: [
+          {companyId: filters.companyId},
+          {deleted: false},
+          {
+            deliveryAgent: {
+              branchId: filters.branchId,
+            },
+          },
+          {
+            createdAt: filters.start_date
+              ? {
+                  gt: startDate,
+                }
+              : undefined,
+          },
+          {
+            createdAt: filters.end_date
+              ? {
+                  lt: endDate,
+                }
+              : undefined,
+          },
+          {deliveryAgentId: filters.deliveryAgentId},
+          {
+            OR: [
+              {deliveryAgentReport: {isNot: null}},
+              {
+                deliveryAgentReport: {
+                  report: {deleted: true},
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const agentProfit = await prisma.report.aggregate({
+      _sum: {
+        deliveryAgentNet: true,
+      },
+      _count: {
+        id: true,
+      },
+      where: {
+        AND: [
+          {
+            createdAt: filters.start_date
+              ? {
+                  gt: startDate,
+                }
+              : undefined,
+          },
+          {
+            createdAt: filters.end_date
+              ? {
+                  lt: endDate,
+                }
+              : undefined,
+          },
+          {companyId: filters.companyId},
+          {deleted: false},
+          {
+            deliveryAgentReport: {
+              deliveryAgentId: filters.deliveryAgentId,
+              deliveryAgent: {
+                branchId: filters.branchId,
+              },
+            },
+          },
+        ],
       },
     });
 
@@ -67,6 +169,10 @@ export class TransactionsRepository {
         companyId: filters.companyId,
         deleted: false,
         status: {in: ["DELIVERED", "PARTIALLY_RETURNED", "REPLACED"]},
+        deliveryAgent: {
+          branchId: filters.branchId,
+        },
+        deliveryAgentId: filters.deliveryAgentId,
         OR: [
           {deliveryAgentReport: {is: null}},
           {
@@ -82,13 +188,14 @@ export class TransactionsRepository {
       _sum: {
         clientNet: true,
       },
-      _count: {
-        id: true,
-      },
       where: {
         companyId: filters.companyId,
         deleted: false,
         status: {in: ["DELIVERED", "PARTIALLY_RETURNED", "REPLACED"]},
+        clientId: filters.clientId,
+        client: {
+          branchId: filters.branchId,
+        },
         OR: [
           {
             clientReport: {
@@ -110,59 +217,285 @@ export class TransactionsRepository {
       },
     });
 
-    const paidToClients = await prisma.order.aggregate({
+    const paidToClients = await prisma.report.aggregate({
       _sum: {
+        clientNet: true,
+      },
+      where: {
+        AND: [
+          {companyId: filters.companyId},
+          {deleted: false},
+          {
+            createdAt: filters.start_date
+              ? {
+                  gt: startDate,
+                }
+              : undefined,
+          },
+          {
+            createdAt: filters.end_date
+              ? {
+                  lt: endDate,
+                }
+              : undefined,
+          },
+          {
+            clientReport: {
+              clientId: filters.clientId,
+              client: {
+                branchId: filters.branchId,
+              },
+              secondaryType: "DELIVERED",
+              report: {
+                deleted: false,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    const forwardedReports = await prisma.branchReport.findMany({
+      where: {
+        branchId: isMainRepository ? undefined : filters.branchId,
+        report: {
+          companyId: filters.companyId,
+          deleted: false,
+        },
+        type: "forwarded",
+      },
+      include: {
+        orders: {
+          where: {
+            AND: [
+              {deleted: false},
+              {deliveryAgentId: filters.deliveryAgentId},
+              {clientId: filters.clientId},
+              {
+                createdAt: filters.start_date
+                  ? {
+                      gt: startDate,
+                    }
+                  : undefined,
+              },
+              {
+                createdAt: filters.end_date
+                  ? {
+                      lt: endDate,
+                    }
+                  : undefined,
+              },
+            ],
+          },
+          select: {
+            governorate: true,
+            deliveryCost: true,
+          },
+        },
+      },
+    });
+
+    const receivedReports = await prisma.branchReport.findMany({
+      where: {
+        branchId: isMainRepository ? undefined : filters.branchId,
+        report: {
+          companyId: filters.companyId,
+          deleted: false,
+        },
+        type: "received",
+      },
+      include: {
+        orders: {
+          where: {
+            AND: [
+              {deleted: false},
+              {deliveryAgentId: filters.deliveryAgentId},
+              {clientId: filters.clientId},
+              {
+                createdAt: filters.start_date
+                  ? {
+                      gt: startDate,
+                    }
+                  : undefined,
+              },
+              {
+                createdAt: filters.end_date
+                  ? {
+                      lt: endDate,
+                    }
+                  : undefined,
+              },
+            ],
+          },
+          select: {
+            governorate: true,
+            deliveryAgentNet: true,
+            client: {
+              select: {
+                branchId: true,
+              },
+            },
+            deliveryCost: true,
+          },
+        },
+      },
+    });
+
+    const toBranch = await prisma.report.aggregate({
+      _sum: {
+        branchNet: true,
+        paidAmount: true,
+      },
+      where: {
+        type: "BRANCH",
+        companyId: filters.companyId,
+        branchReport: {
+          branchId: isMainRepository ? undefined : filters.branchId,
+          type: isMainRepository ? "forwarded" : "received",
+        },
+      },
+    });
+
+    const fromBranch = await prisma.report.aggregate({
+      _sum: {
+        branchNet: true,
+        clientNet: true,
+      },
+      where: {
+        type: "BRANCH",
+        companyId: filters.companyId,
+        branchReport: {
+          branchId: isMainRepository ? undefined : filters.branchId,
+          type: isMainRepository ? "received" : "forwarded",
+        },
+      },
+    });
+
+    const insideOrders = await prisma.order.aggregate({
+      _sum: {
+        companyNet: true,
         clientNet: true,
       },
       _count: {
         id: true,
       },
       where: {
-        companyId: filters.companyId,
-        deleted: false,
-        status: {in: ["DELIVERED", "PARTIALLY_RETURNED", "REPLACED"]},
-        clientReport: {
-          some: {
-            secondaryType: "DELIVERED",
-            report: {
-              deleted: false,
+        AND: [
+          {
+            companyId: filters.companyId,
+          },
+          {
+            branch: {
+              id: filters.branchId,
             },
           },
-        },
-      },
-    });
-    const totalDepoist = await prisma.transaction.aggregate({
-      _sum: {
-        paidAmount: true,
-      },
-      _count: {
-        id: true,
-      },
-      where: {
-        companyId: filters.companyId,
-        type: "DEPOSIT",
+          {deleted: false},
+          {
+            client: {
+              branchId: filters.branchId,
+            },
+          },
+          {
+            createdAt: filters.start_date
+              ? {
+                  gt: startDate,
+                }
+              : undefined,
+          },
+          {
+            createdAt: filters.end_date
+              ? {
+                  lt: endDate,
+                }
+              : undefined,
+          },
+          {clientId: filters.clientId},
+          {deliveryAgentId: filters.deliveryAgentId},
+          {
+            OR: [
+              {deliveryAgentReport: {isNot: null}},
+              {
+                deliveryAgentReport: {
+                  report: {deleted: true},
+                },
+              },
+            ],
+          },
+        ],
       },
     });
 
-    const totalWithdraw = await prisma.transaction.aggregate({
-      _sum: {
-        paidAmount: true,
-      },
-      _count: {
-        id: true,
-      },
-      where: {
-        companyId: filters.companyId,
-        type: "WITHDRAW",
-      },
-    });
-    const paginatedTransactions = await prisma.transaction.findManyPaginated(
+    const paginatedTransactions = await prisma.report.findManyPaginated(
       {
-        where,
-        orderBy: {
-          createdAt: "desc",
+        where: {
+          AND: [
+            {companyId: filters.companyId},
+            {
+              createdAt: filters.start_date
+                ? {
+                    gt: startDate,
+                  }
+                : undefined,
+            },
+            {
+              createdAt: filters.end_date
+                ? {
+                    lt: endDate,
+                  }
+                : undefined,
+            },
+            {
+              type: filters.clientId
+                ? "CLIENT"
+                : filters.deliveryAgentId
+                ? "DELIVERY_AGENT"
+                : filters.type
+                ? "BRANCH"
+                : {in: ["BRANCH", "DELIVERY_AGENT", "CLIENT"]},
+            },
+            {
+              OR: [
+                {
+                  branchReport: {
+                    type:
+                      filters.type === "forwardedAll"
+                        ? "forwarded"
+                        : filters.type === "receivedAll"
+                        ? "received"
+                        : undefined,
+                    branchId: isMainRepository ? undefined : filters.branchId,
+                    id: {gt: -1},
+                  },
+                },
+                {
+                  clientReport: {
+                    secondaryType: "DELIVERED",
+                    clientId: filters.clientId,
+                    client: {
+                      branchId: isMainRepository
+                        ? mainBranch?.id
+                        : filters.branchId,
+                    },
+                  },
+                },
+                {
+                  deliveryAgentReport: {
+                    deliveryAgentId: filters.deliveryAgentId,
+                    deliveryAgent: {
+                      branchId: isMainRepository
+                        ? mainBranch?.id
+                        : filters.branchId,
+                    },
+                  },
+                },
+              ],
+            },
+          ],
         },
-        select: transactionSelect,
+        select: reportSelect,
+        orderBy: {
+          id: "desc",
+        },
       },
       {
         page: filters.page,
@@ -170,13 +503,111 @@ export class TransactionsRepository {
       }
     );
 
+    const reportsReformed = paginatedTransactions.data.map((report) =>
+      reportReform(report)
+    );
+
+    let totalDepoist = 0;
+    let totalWithdraw = 0;
+    let branchProfit = 0;
+
+    totalDepoist += receivedFromAgents._sum.companyNet || 0;
+    totalDepoist += fromBranch._sum.branchNet || 0;
+
+    totalWithdraw += toBranch._sum.branchNet || 0;
+    totalWithdraw += paidToClients._sum.clientNet || 0;
+
+    if (filters.type !== "inside") {
+      if (filters.type === "forwardedAll") {
+        forwardedReports.forEach((report) => {
+          report.orders.forEach((order) => {
+            if (order.governorate === "BAGHDAD") {
+              branchProfit += isMainRepository
+                ? report.baghdadDeliveryCost
+                : order.deliveryCost - report.baghdadDeliveryCost;
+            } else {
+              branchProfit += isMainRepository
+                ? report.governoratesDeliveryCost
+                : order.deliveryCost - report.governoratesDeliveryCost;
+            }
+          });
+        });
+      } else if (filters.type === "receivedAll") {
+        receivedReports.forEach((report) => {
+          report.orders.forEach((order) => {
+            if (order.client.branchId === mainBranch?.id && isMainRepository) {
+              if (order.governorate === "BAGHDAD") {
+                branchProfit += order.deliveryCost - report.baghdadDeliveryCost;
+              } else {
+                branchProfit +=
+                  order.deliveryCost - report.governoratesDeliveryCost;
+              }
+            } else {
+              if (order.governorate === "BAGHDAD") {
+                branchProfit += isMainRepository
+                  ? -report.baghdadDeliveryCost
+                  : report.baghdadDeliveryCost - order.deliveryAgentNet;
+              } else {
+                branchProfit += isMainRepository
+                  ? -report.governoratesDeliveryCost
+                  : report.governoratesDeliveryCost - order.deliveryAgentNet;
+              }
+            }
+          });
+        });
+      } else {
+        forwardedReports.forEach((report) => {
+          report.orders.forEach((order) => {
+            if (order.governorate === "BAGHDAD") {
+              branchProfit += isMainRepository
+                ? report.baghdadDeliveryCost
+                : order.deliveryCost - report.baghdadDeliveryCost;
+            } else {
+              branchProfit += isMainRepository
+                ? report.governoratesDeliveryCost
+                : order.deliveryCost - report.governoratesDeliveryCost;
+            }
+          });
+        });
+        receivedReports.forEach((report) => {
+          report.orders.forEach((order) => {
+            if (order.client.branchId === mainBranch?.id && isMainRepository) {
+              if (order.governorate === "BAGHDAD") {
+                branchProfit += order.deliveryCost - report.baghdadDeliveryCost;
+              } else {
+                branchProfit +=
+                  order.deliveryCost - report.governoratesDeliveryCost;
+              }
+            } else {
+              if (order.governorate === "BAGHDAD") {
+                branchProfit += isMainRepository
+                  ? -report.baghdadDeliveryCost
+                  : report.baghdadDeliveryCost - order.deliveryAgentNet;
+              } else {
+                branchProfit += isMainRepository
+                  ? -report.governoratesDeliveryCost
+                  : report.governoratesDeliveryCost - order.deliveryAgentNet;
+              }
+            }
+          });
+        });
+      }
+    }
+
+    if (filters.type === "inside" || !filters.type) {
+      branchProfit += insideOrders._sum.companyNet || 0;
+      branchProfit -= insideOrders._sum.clientNet || 0;
+    }
+
     return {
-      transactions: paginatedTransactions.data,
+      transactions: reportsReformed,
       pagesCount: paginatedTransactions.pagesCount,
       count: paginatedTransactions.dataCount,
-      totalDepoist: totalDepoist._sum.paidAmount || 0,
-      totalWithdraw: totalWithdraw._sum.paidAmount || 0,
+      totalDepoist,
+      totalWithdraw,
+      branchProfit,
       receivedFromAgents: receivedFromAgents._sum.companyNet,
+      agentProfit: agentProfit._sum.deliveryAgentNet,
       notReceived: notReceived._sum.paidAmount,
       forClients: forClients._sum.clientNet,
       paidToClients: paidToClients._sum.clientNet,

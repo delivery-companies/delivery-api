@@ -1,0 +1,88 @@
+<html lang="ar" dir="rtl">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>تقرير كشوفات عميل</title>
+  </head>
+
+  <body class="px-20">
+    <header>
+      <table>
+        <tr>
+          <td style="width: 25%;">الشركة:
+            <span>{{reportsData.company.name}}</span></td>
+          <td style="width: 25%;" class="title">تقرير كشوفات عميل</td>
+          <td style="width: 25%;">عدد الطلبيات:
+            <span>{{add
+                reportsData.baghdadOrdersCount
+                reportsData.governoratesOrdersCount
+              }}</span></td>
+          <td style="width: 25%;" rowspan="3"><img
+              src="{{reportsData.company.logo}}"
+            /></td>
+        </tr>
+        <tr>
+          <td style="width: 25%;">صافي الشركة:
+            <span>{{currency reportsData.companyNet}}</span></td>
+          <td style="width: 25%;">عدد الكشوفات:
+            <span>{{reportsData.count}}</span></td>
+          <td style="width: 25%;">عدد طلبيات بغداد:
+            <span>{{reportsData.baghdadOrdersCount}}</span></td>
+          <td style="width: 25%;"></td>
+        </tr>
+        <tr>
+          <td style="width: 25%;">صافي العميل:
+            <span>{{currency reportsData.clientNet}}</span></td>
+          <td style="width: 25%;">التاريخ:
+            <span>{{date reportsData.date}}</span></td>
+          <td style="width: 25%;">عدد طلبيات المحافظات:
+            <span>{{reportsData.governoratesOrdersCount}}</span></td>
+          <td style="width: 25%;"></td>
+        </tr>
+      </table>
+    </header>
+    <main>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>رقم الكشف</th>
+            <th>العميل</th>
+            <th>الصفحة</th>
+            <th>رقم الهاتف</th>
+            <th>المحاسب</th>
+            <th>صافي العميل</th>
+            <th>صافي الشركة</th>
+            <th>طلبيات بغداد</th>
+            <th>طلبيات المحافظات</th>
+            <th>اجور بغداد</th>
+            <th>اجور المحافظات</th>
+            <th>التاريخ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each reports}}
+            <tr>
+              <td class="nowrap">{{inc @index}}</td>
+              <td>{{id}}</td>
+              <td>{{clientReport.client.name}}</td>
+              <td>{{clientReport.store.name}}</td>
+              <td>{{clientReport.client.phone}}</td>
+              <td>{{createdBy.name}}</td>
+              <td>{{currency clientNet}}</td>
+              <td>{{currency companyNet}}</td>
+              <td>{{baghdadOrdersCount}}</td>
+              <td>{{governoratesOrdersCount}}</td>
+              <td>{{currency clientReport.baghdadDeliveryCost}}</td>
+              <td>{{currency clientReport.governoratesDeliveryCost}}</td>
+              <td>{{date createdAt}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </main>
+    <section class="watermark">{{reportsData.company.name}}</section>
+  </body>
+
+</html>

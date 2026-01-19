@@ -2,7 +2,6 @@ node_modules
 
 .env
 credentials.json
-build
 logs
 uploads
 storage

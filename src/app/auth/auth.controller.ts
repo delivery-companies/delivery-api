@@ -110,23 +110,6 @@ export class AuthController {
         location: user.location,
       }
     );
-
-    // Clear invalid refresh tokens
-    // const refreshTokens = await usersRepository.getUserRefreshTokens(returnedUser.id);
-    // if (refreshTokens) {
-    //     const validRefreshTokens = refreshTokens.filter((token) => {
-    //         try {
-    //             jwt.verify(token, env.REFRESH_TOKEN_SECRET as string);
-    //             return true;
-    //         } catch (err) {
-    //             return false;
-    //         }
-    //     });
-    //     await usersRepository.updateUser({
-    //         userID: returnedUser.id,
-    //         userData: { refreshTokens: validRefreshTokens }
-    //     });
-    // }
   });
 
   refreshToken = catchAsync(async (req, res) => {
@@ -188,6 +171,7 @@ export class AuthController {
       res.status(201).json({
         status: "success",
         token: token,
+        // refreshToken: newRefreshToken,
       });
     } catch (err) {
       throw new AppError("الرجاء تسجيل الدخول", 401);

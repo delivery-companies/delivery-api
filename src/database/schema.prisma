@@ -116,6 +116,7 @@ model Client {
   id                        Int                     @id
   role                      ClientRole              @default(CLIENT)
   token                     String                  @default("")
+  apiKeyHash                String?                 
   governoratesDeliveryCosts Json                    @default("[]")
   deletedById               Int?
   createdById               Int
@@ -127,6 +128,7 @@ model Client {
   receivingAgentId          Int?
   showNumbers               Boolean                 @default(false)
   showDeliveryNumber        Boolean                 @default(false)
+  isExternal                Boolean                 @default(false)
   categories                Category[]
   branch                    Branch?                 @relation(fields: [branchId], references: [id])
   company                   Company                 @relation(fields: [companyId], references: [id])
@@ -202,8 +204,8 @@ model Branch {
   companyId           Int
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt
-  branchCLient        Float?                       @default(1000)
-  branchOrder         Float?                       @default(1000)
+  branchCLient        Float                       @default(1000)
+  branchOrder         Float                       @default(1000)
   automaticUpdate     AutomaticUpdate[]
   company             Company                    @relation(fields: [companyId], references: [id])
   branchReports       BranchReport[]
@@ -215,6 +217,7 @@ model Branch {
   locations           Location[]
   orders              Order[]
   repositories        Repository[]
+  transctions         Transaction[]
 
   @@unique([name, companyId])
 }
@@ -396,6 +399,7 @@ model Order {
   oldDeliveryCost        Float                    @default(0)
   receivedBranchId       Int?
   branchNet              Float                    @default(0)
+  branchDeliveryCost     Float                    @default(0)
   chat                   Chat?
   CustomerOutput         CustomerOutput[]
   automaticUpdate        AutomaticUpdate?         @relation(fields: [automaticUpdateId], references: [id])
@@ -578,6 +582,7 @@ model Report {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
   branchNet               Float                @default(0)
+  url                     String?                
   branchReport            BranchReport?
   clientReport            ClientReport?
   companyReport           CompanyReport?
@@ -838,15 +843,17 @@ model ClosedStatus {
 
 model Transaction {
   id                      Int      @id @default(autoincrement())
-  paidAmount              Float  @default(0)
+  paidAmount              Float    @default(0)
   type                    TransactionType
   for                     String
   employeeId              Int?
   createdById             Int?
-  createdBy               User?                @relation(fields: [createdById], references: [id])
+  branchId                Int?
+  createdBy               User?                 @relation(fields: [createdById], references: [id])
   employee                Employee?             @relation(fields: [employeeId], references: [id])
   companyId               Int
-  company                 Company  @relation(fields: [companyId], references: [id])
+  company                 Company               @relation(fields: [companyId], references: [id])
+  branch                  Branch?                @relation(fields: [branchId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

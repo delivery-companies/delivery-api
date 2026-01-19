@@ -1,8 +1,8 @@
-import type { Governorate, Prisma } from "@prisma/client";
-import { prisma } from "../../database/db";
-import type { loggedInUserType } from "../../types/user";
-import type { LocationCreateType, LocationUpdateType } from "./locations.dto";
-import { locationReform, locationSelect } from "./locations.responses";
+import type {Governorate, Prisma} from "@prisma/client";
+import {prisma} from "../../database/db";
+import type {loggedInUserType} from "../../types/user";
+import type {LocationCreateType, LocationUpdateType} from "./locations.dto";
+import {locationReform, locationSelect} from "./locations.responses";
 
 export const governorateArabicNames = {
   AL_ANBAR: "الأنبار",
@@ -130,6 +130,7 @@ export class LocationsRepository {
             id: true,
             name: true,
             governorate: true,
+            branchId: true,
           },
         },
         {
@@ -174,7 +175,7 @@ export class LocationsRepository {
     };
   }
 
-  async getLocation(data: { locationID: number }) {
+  async getLocation(data: {locationID: number}) {
     const location = await prisma.location.findUnique({
       where: {
         id: data.locationID,
@@ -235,7 +236,7 @@ export class LocationsRepository {
     return locationReform(location);
   }
 
-  async deleteLocation(data: { locationID: number }) {
+  async deleteLocation(data: {locationID: number}) {
     await prisma.location.delete({
       where: {
         id: data.locationID,
@@ -244,8 +245,11 @@ export class LocationsRepository {
     return true;
   }
 
-  async publicGetAllLocations() {
+  async publicGetAllLocations(governorate?: Governorate) {
     const locations = await prisma.location.findMany({
+      where: {
+        governorate: governorate || undefined,
+      },
       select: {
         id: true,
         name: true,

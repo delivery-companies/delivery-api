@@ -52,9 +52,13 @@ app.use(morganMiddleware);
 app.use(
   compression({
     filter: (req, res) => {
-      if (req.headers["x-no-compression"]) {
+      const contentType = res.getHeader("Content-Type");
+
+      // Do not gzip PDFs
+      if (contentType && contentType.toString().includes("application/pdf")) {
         return false;
       }
+
       return compression.filter(req, res);
     },
     threshold: 0,
@@ -70,6 +74,7 @@ app.use(
 );
 
 // Routes
+app.disable("etag");
 
 app.use("/api/v1", apiRouter);
 

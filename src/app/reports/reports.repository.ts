@@ -213,32 +213,6 @@ export class ReportsRepository {
             {
               clientReport: data.filters.branch
                 ? {
-                    orders: {
-                      some: {
-                        branch: {
-                          id: data.filters.branch,
-                        },
-                      },
-                    },
-                  }
-                : undefined,
-            },
-            {
-              clientReport: data.filters.branch
-                ? {
-                    orders: {
-                      some: {
-                        branch: {
-                          id: data.filters.branch,
-                        },
-                      },
-                    },
-                  }
-                : undefined,
-            },
-            {
-              clientReport: data.filters.branch
-                ? {
                     client: {
                       branch: {
                         id: data.filters.branch,
@@ -297,10 +271,9 @@ export class ReportsRepository {
         },
         {
           clientReport: {
-            secondaryType:
-              data.filters.type === "CLIENT"
-                ? data.filters.secondaryType
-                : undefined,
+            secondaryType: data.filters.secondaryType
+              ? data.filters.secondaryType
+              : undefined,
           },
         },
         {

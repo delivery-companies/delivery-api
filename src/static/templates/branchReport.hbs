@@ -1,0 +1,117 @@
+<html lang="ar" dir="rtl">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>كشف فرع</title>
+  </head>
+
+  <body class="px-20">
+    <header>
+      <table>
+        <tr>
+          <td style="width: 25%">رقم الكشف: <span>{{reportData.id}}</span></td>
+          <td style="width: 25%" class="title blue">كشف فرع</td>
+          <td style="width: 25%">عدد الطلبيات:
+            <span>{{add
+                reportData.baghdadOrdersCount
+                reportData.governoratesOrdersCount
+              }}</span></td>
+          <td style="width: 25%" rowspan="3"><img
+              src="{{reportData.company.logo}}"
+            /></td>
+        </tr>
+        <tr>
+          <td style="width: 25%">التاريخ:
+            <span>{{date reportData.createdAt}}</span></td>
+
+          <td style="width: 25%">الفرع:
+            <span>{{reportData.branchReport.branch.name}}</span></td>
+          <td style="width: 25%">عدد طلبيات بغداد:
+            <span>{{reportData.baghdadOrdersCount}}</span></td>
+          <td style="width: 25%"></td>
+        </tr>
+        <tr>
+          <td style="width: 25%">إجمالي المبلغ المستحق :
+            <span>{{currency reportData.branchNet}}</span></td>
+          <td style="width: 25%">عدد طلبيات المحافظات:
+            <span>{{reportData.governoratesOrdersCount}}</span></td>
+          <td style="width: 25%"></td>
+        </tr>
+      </table>
+    </header>
+    <main>
+      <table>
+        <thead>
+          <tr class="bg-green">
+            <th>#</th>
+            <th>رقم الوصل</th>
+            <th>أنشئ في</th>
+            <th>الصفحة</th>
+            <th>المندوب</th>
+            <th>هاتف المستلم</th>
+            <th>عنوان المستلم</th>
+            <th>مبلغ الوصل</th>
+            <th>المبلغ المستلم</th>
+            <th>المبلغ المستقطع</th>
+            <th>صافي الفرع</th>
+            <th>الحالة</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each orders}}
+            <tr class="{{changed status totalCost paidAmount}}">
+              <td class="nowrap">{{inc @index}}</td>
+              <td>{{receiptNumber}}</td>
+              <td>{{date createdAt}}</td>
+              {{#if store}}
+                <td>{{store.name}}</td>
+              {{else}}
+                <td></td>
+              {{/if}}
+              {{#if deliveryAgent}}
+                <td>{{deliveryAgent.name}}</td>
+              {{else}}
+                <td></td>
+              {{/if}}
+              <td>{{mapPhones recipientPhones}}</td>
+              <td>{{localizeGovernorate governorate}}
+                -
+                {{location.name}}</td>
+              <td>{{currency totalCost}}</td>
+              <td>{{currency paidAmount}}</td>
+              <td>{{isBaghdad
+                  governorate
+                  branchDeliveryCost
+                  @root.reportData.branchReport.baghdadDeliveryCost
+                  @root.reportData.branchReport.governoratesDeliveryCost
+                }}</td>
+              <td>{{currency branchNet}}</td>
+              <td class="{{colorizeRow status}}">{{localizeOrderStatus
+                  status
+                }}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+
+      </table>
+      <!-- Force page break before totals, if needed -->
+      <div style="page-break-inside: avoid; break-inside: avoid;">
+        <table>
+          <tr>
+            <td colspan="7" style="font-weight: bold;width:30%">المجموع</td>
+            <td style="font-weight: bold">مبلغ الوصل :
+              {{currency reportData.totalCost}}</td>
+            <td style="font-weight: bold">المبلغ المدفوع :
+              {{currency reportData.paidAmount}}</td>
+            <td style="font-weight: bold">إجمالي المبلغ المستحق :
+              {{currency reportData.branchNet}}</td>
+          </tr>
+        </table>
+      </div>
+    </main>
+
+    {{!-- <section class="watermark">{{reportData.company.name}}</section> --}}
+  </body>
+
+</html>

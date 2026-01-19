@@ -1,10 +1,9 @@
-import type { Prisma } from "@prisma/client";
+import type {Prisma} from "@prisma/client";
 
 export const branchSelect = {
   id: true,
   name: true,
   governorate: true,
-
   company: {
     select: {
       id: true,

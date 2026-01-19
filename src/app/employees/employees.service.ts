@@ -113,7 +113,8 @@ export class EmployeesService {
 
     if (
       data.loggedInUser.role !== "ACCOUNT_MANAGER" &&
-      data.loggedInUser.role !== "COMPANY_MANAGER"
+      data.loggedInUser.role !== "COMPANY_MANAGER" &&
+      !data.loggedInUser.mainRepository
     ) {
       branchID = data.loggedInUser.branchId;
     }

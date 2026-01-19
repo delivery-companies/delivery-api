@@ -1,4 +1,4 @@
-import {AdminRole, EmployeeRole, RepositoryType} from "@prisma/client";
+import {AdminRole, RepositoryType} from "@prisma/client";
 import {catchAsync} from "../../lib/catchAsync";
 import type {loggedInUserType} from "../../types/user";
 import {

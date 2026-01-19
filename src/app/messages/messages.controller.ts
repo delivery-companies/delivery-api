@@ -11,6 +11,204 @@ import {AppError} from "../../lib/AppError";
 const employeesRepository = new EmployeesRepository();
 
 export class MessagesController {
+  async getOrderInquiryEmployees(data: {orderID: string | undefined}) {
+    const order = await prisma.order.findUnique({
+      where: {
+        id: data.orderID,
+      },
+      select: {
+        branchId: true,
+        storeId: true,
+        companyId: true,
+        locationId: true,
+        status: true,
+        governorate: true,
+        client: {
+          select: {
+            branchId: true,
+          },
+        },
+        deliveryAgent: {
+          select: {
+            id: true,
+          },
+        },
+        location: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new AppError("الطلب غير موجود", 404);
+    }
+
+    const orderInquiryEmployees: {
+      id: number;
+      name: string;
+      phone: string;
+      avatar: string;
+      role: string;
+    }[] = [];
+
+    (
+      await prisma.employee.findMany({
+        where: {
+          AND: [
+            {role: "INQUIRY_EMPLOYEE"},
+            {
+              OR: [
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.client.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: "receiving",
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: "forwarded",
+                  inquiryBranches: {
+                    some: {
+                      branchId: {
+                        in: [order.client.branchId!!],
+                      },
+                    },
+                  },
+                },
+                {
+                  branch: {
+                    repositories: {
+                      some: {
+                        mainRepository: true,
+                      },
+                    },
+                  },
+                  orderType: null,
+                  inquiryBranches: {
+                    none: {},
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              avatar: true,
+            },
+          },
+          inquiryStatuses: true,
+          inquiryGovernorates: true,
+          inquiryLocations: true,
+          inquiryStores: true,
+          inquiryDeliveryAgents: true,
+          role: true,
+        },
+      })
+    ).forEach((inquiryEmployee) => {
+      const inquiryLocation = inquiryEmployee.inquiryLocations.find(
+        (e) => e.locationId === order.locationId
+      );
+      const inquiryStore = inquiryEmployee.inquiryStores.find(
+        (e) => e.storeId === order.storeId
+      );
+      const inquiryDelivery = inquiryEmployee.inquiryDeliveryAgents.find(
+        (e) => e.deliveryAgentId === order.deliveryAgent?.id
+      );
+      if (
+        inquiryEmployee.inquiryStatuses.length > 0 &&
+        !inquiryEmployee.inquiryStatuses.includes(order?.status)
+      ) {
+        return;
+      }
+      if (
+        inquiryEmployee.inquiryGovernorates.length > 0 &&
+        !inquiryEmployee.inquiryGovernorates.includes(order?.governorate)
+      ) {
+        return;
+      }
+      if (inquiryEmployee.inquiryStores.length > 0 && !inquiryStore) {
+        return;
+      }
+      if (inquiryEmployee.inquiryLocations.length > 0 && !inquiryLocation) {
+        return;
+      }
+      if (
+        inquiryEmployee.inquiryDeliveryAgents.length > 0 &&
+        order.deliveryAgent &&
+        !inquiryDelivery
+      ) {
+        return;
+      }
+      orderInquiryEmployees.push({
+        id: inquiryEmployee.user?.id ?? null,
+        name: inquiryEmployee.user?.name ?? null,
+        phone: inquiryEmployee.user?.phone ?? null,
+        avatar: inquiryEmployee.user?.avatar ?? null,
+        role: inquiryEmployee.role,
+      });
+    }) ?? [];
+
+    return orderInquiryEmployees;
+  }
+
   getOrderChatMembers = async (orderId: string) => {
     let chatMembers: number[] = [];
 
@@ -33,6 +231,7 @@ export class MessagesController {
         companyId: true,
       },
     });
+
     const companyManagers = await prisma.employee.findMany({
       where: {
         role: "COMPANY_MANAGER",
@@ -52,86 +251,36 @@ export class MessagesController {
       },
     });
 
-    const inquiryEmployees = await prisma.employee.findMany({
-      where: {
-        AND: [
-          {role: "INQUIRY_EMPLOYEE"},
-          {
-            inquiryStatuses: order?.status ? {has: order.status} : undefined,
-          },
-          {
-            inquiryBranches: order?.branchId
-              ? {
-                  some: {
-                    branchId: order.branchId,
-                  },
-                }
-              : undefined,
-          },
-          {
-            inquiryCompanies: order?.companyId
-              ? {
-                  some: {
-                    companyId: order.companyId,
-                  },
-                }
-              : undefined,
-          },
-          {
-            inquiryStores: order?.storeId
-              ? {
-                  some: {
-                    storeId: order.storeId,
-                  },
-                }
-              : undefined,
-          },
-          {
-            inquiryLocations: order?.locationId
-              ? {
-                  some: {
-                    locationId: order.locationId,
-                  },
-                }
-              : undefined,
-          },
-          // TODO
-          {
-            inquiryGovernorates: order?.governorate
-              ? {has: order.governorate}
-              : undefined,
-          },
-        ],
-      },
-      select: {
-        id: true,
-      },
+    const inquiryEmployees = await this.getOrderInquiryEmployees({
+      orderID: orderId,
     });
 
     const clientAssistant = await prisma.employee.findMany({
       where: {
         AND: [
-          {role: "CLIENT_ASSISTANT"},
-          {clientId: order?.clientId},
+          {role: {in: ["CLIENT_ASSISTANT", "EMPLOYEE_CLIENT_ASSISTANT"]}},
           {
-            managedStores: {
-              some: {
-                id: order?.storeId,
+            OR: [
+              {
+                clientId: order?.clientId,
               },
-            },
-          },
-          {
-            orderStatus: {has: order?.status},
-          },
-          {
-            permissions: {has: "MESSAGES"},
+              {
+                inquiryStores: {
+                  some: {
+                    storeId: order?.storeId,
+                  },
+                },
+              },
+            ],
           },
         ],
       },
       select: {
         id: true,
+        orderStatus: true,
       },
     });
+
     inquiryEmployees.forEach((e) => {
       chatMembers.push(e.id);
     });
@@ -142,7 +291,9 @@ export class MessagesController {
       chatMembers.push(e.id);
     });
     clientAssistant.forEach((e) => {
-      chatMembers.push(e.id);
+      if (order?.status && e.orderStatus.includes(order.status)) {
+        chatMembers.push(e.id);
+      }
     });
     order?.clientId && chatMembers.push(order?.clientId);
     order?.deliveryAgentId && chatMembers.push(order?.deliveryAgentId);
@@ -173,6 +324,7 @@ export class MessagesController {
         inquiryStores: true,
         permissions: true,
         orderStatus: true,
+        mainEmergency: true,
       },
     });
 
@@ -181,6 +333,7 @@ export class MessagesController {
     let inquiryLocationsIDs: number[] | undefined = undefined;
     let inquiryBranchesIDs: number[] | undefined = undefined;
     let inquiryStoresIDs: number[] | undefined = undefined;
+    let orderType: string | undefined = undefined;
 
     if (user.role === "INQUIRY_EMPLOYEE") {
       const inquiryEmployeeStuff =
@@ -188,6 +341,8 @@ export class MessagesController {
           employeeID: +user.id,
         });
       if (inquiryEmployeeStuff) {
+        orderType = inquiryEmployeeStuff.orderType || undefined;
+
         inquiryStatuses =
           inquiryEmployeeStuff.inquiryStatuses &&
           inquiryEmployeeStuff.inquiryStatuses.length > 0
@@ -241,7 +396,7 @@ export class MessagesController {
       };
     }
     if (user.role === "CLIENT_ASSISTANT") {
-      inquiryStoresIDs = employee?.managedStores.map((s) => s.id);
+      inquiryStoresIDs = employee?.inquiryStores.map((s) => s.storeId);
     }
     if (user.role === "EMPLOYEE_CLIENT_ASSISTANT") {
       inquiryStoresIDs = employee?.inquiryStores.map((s) => s.storeId);
@@ -294,12 +449,16 @@ export class MessagesController {
                         : undefined,
                     },
                     {
-                      branch: inquiryBranchesIDs
+                      branch: orderType
+                        ? undefined
+                        : inquiryBranchesIDs
                         ? {
                             id: {
                               in: inquiryBranchesIDs,
                             },
                           }
+                        : employee?.mainEmergency
+                        ? undefined
                         : {
                             id: employee?.branchId!!,
                           },
@@ -327,6 +486,22 @@ export class MessagesController {
                           }
                         : undefined,
                     },
+                    {
+                      forwardedBranchId:
+                        orderType === "forwarded" && inquiryBranchesIDs
+                          ? {in: inquiryBranchesIDs}
+                          : orderType === "forwarded"
+                          ? employee?.branchId
+                          : undefined,
+                    },
+                    {
+                      receivedBranchId:
+                        orderType === "receiving" && inquiryBranchesIDs
+                          ? {in: inquiryBranchesIDs}
+                          : orderType === "receiving"
+                          ? employee?.branchId
+                          : undefined,
+                    },
                   ],
                 }
               : {
@@ -342,8 +517,10 @@ export class MessagesController {
                   branchId:
                     user.role !== "COMPANY_MANAGER" &&
                     user.role !== "CLIENT_ASSISTANT" &&
+                    user.role !== "EMPLOYEE_CLIENT_ASSISTANT" &&
                     !user.mainRepository &&
-                    user.role !== "DELIVERY_AGENT"
+                    user.role !== "DELIVERY_AGENT" &&
+                    user.role !== "BRANCH_MANAGER"
                       ? employee?.branchId
                       : undefined,
                   deliveryAgentId:
@@ -352,6 +529,21 @@ export class MessagesController {
                     user.role === "CLIENT_ASSISTANT" ||
                     user.role === "EMPLOYEE_CLIENT_ASSISTANT"
                       ? {in: inquiryStoresIDs}
+                      : undefined,
+                  OR:
+                    user.role === "BRANCH_MANAGER"
+                      ? [
+                          {
+                            branch: {
+                              id: employee?.branchId!!,
+                            },
+                          },
+                          {
+                            client: {
+                              branchId: employee?.branchId,
+                            },
+                          },
+                        ]
                       : undefined,
                 },
         },
@@ -393,7 +585,6 @@ export class MessagesController {
         size,
       }
     );
-
     const unSeenChats = await prisma.message.groupBy({
       by: ["chatId"],
       _count: {
@@ -417,11 +608,14 @@ export class MessagesController {
               ? {
                   AND: [
                     {
-                      status: inquiryStatuses
-                        ? {
-                            in: inquiryStatuses,
-                          }
-                        : undefined,
+                      status:
+                        status && status !== "null"
+                          ? (status as OrderStatus)
+                          : inquiryStatuses
+                          ? {
+                              in: inquiryStatuses,
+                            }
+                          : undefined,
                     },
                     {
                       governorate: inquiryGovernorates
@@ -431,17 +625,19 @@ export class MessagesController {
                         : undefined,
                     },
                     {
-                      branch: inquiryBranchesIDs
+                      branch: orderType
+                        ? undefined
+                        : inquiryBranchesIDs
                         ? {
                             id: {
                               in: inquiryBranchesIDs,
                             },
                           }
-                        : !user.mainRepository
-                        ? {
-                            id: user.branchId,
-                          }
-                        : undefined,
+                        : employee?.mainEmergency
+                        ? undefined
+                        : {
+                            id: employee?.branchId!!,
+                          },
                     },
                     {
                       store: inquiryStoresIDs
@@ -466,6 +662,22 @@ export class MessagesController {
                           }
                         : undefined,
                     },
+                    {
+                      forwardedBranchId:
+                        orderType === "forwarded" && inquiryBranchesIDs
+                          ? {in: inquiryBranchesIDs}
+                          : orderType === "forwarded"
+                          ? employee?.branchId
+                          : undefined,
+                    },
+                    {
+                      receivedBranchId:
+                        orderType === "receiving" && inquiryBranchesIDs
+                          ? {in: inquiryBranchesIDs}
+                          : orderType === "receiving"
+                          ? employee?.branchId
+                          : undefined,
+                    },
                   ],
                 }
               : {
@@ -475,6 +687,7 @@ export class MessagesController {
                     user.role !== "COMPANY_MANAGER" &&
                     user.role !== "CLIENT_ASSISTANT" &&
                     user.role !== "EMPLOYEE_CLIENT_ASSISTANT" &&
+                    user.role !== "BRANCH_MANAGER" &&
                     user.role !== "DELIVERY_AGENT"
                       ? employee?.branchId
                       : undefined,
@@ -484,6 +697,21 @@ export class MessagesController {
                     user.role === "CLIENT_ASSISTANT" ||
                     user.role === "EMPLOYEE_CLIENT_ASSISTANT"
                       ? {in: inquiryStoresIDs}
+                      : undefined,
+                  OR:
+                    user.role === "BRANCH_MANAGER"
+                      ? [
+                          {
+                            branch: {
+                              id: employee?.branchId!!,
+                            },
+                          },
+                          {
+                            client: {
+                              branchId: employee?.branchId,
+                            },
+                          },
+                        ]
                       : undefined,
                 },
         },
@@ -635,6 +863,11 @@ export class MessagesController {
         id: true,
         orderId: true,
         numberOfMessages: true,
+        Order: {
+          select: {
+            receiptNumber: true,
+          },
+        },
       },
     });
 
@@ -648,6 +881,11 @@ export class MessagesController {
           id: true,
           orderId: true,
           numberOfMessages: true,
+          Order: {
+            select: {
+              receiptNumber: true,
+            },
+          },
         },
       });
     }
@@ -706,10 +944,18 @@ export class MessagesController {
     let chatMembers = await this.getOrderChatMembers(orderId);
     chatMembers = chatMembers.filter((e) => +e !== +loggedInUser.id);
 
-    io.to(`chat_${chat.orderId}`).emit("newChatMessage", message);
+    io.to(`chat_${chat.orderId}`).emit("newChatMessage", {
+      ...message,
+      chatId: chat.id,
+    });
 
     chatMembers.forEach((member) => {
-      io.to(`${member}`).emit("newMessage", message);
+      io.to(`${member}`).emit("newMessage", {
+        ...message,
+        chatId: chat.id,
+        orderId: chat.orderId,
+        receiptNumber: chat.Order?.receiptNumber,
+      });
     });
     // const chats=await this.getUserChats(loggedInUser.id)
 
@@ -744,7 +990,7 @@ export class MessagesController {
 
   getUserChatMessages = catchAsync(async (req, res) => {
     const loggedInUser = res.locals.user as loggedInUserType;
-    const {size, page, orderId} = req.query;
+    const {orderId} = req.query;
 
     if (!orderId) {
       return;
@@ -757,7 +1003,7 @@ export class MessagesController {
     res.status(201).json({...chats});
   });
 
-  markAllSeen = catchAsync(async (req, res) => {
+  markAllSeen = catchAsync(async (_req, res) => {
     const user = res.locals.user as loggedInUserType;
 
     const employee = await prisma.employee.findUnique({
@@ -825,7 +1071,7 @@ export class MessagesController {
       inquiryStoresIDs = employee?.inquiryStores.map((s) => s.storeId);
     }
 
-    const result = await prisma.message.updateMany({
+    await prisma.message.updateMany({
       where: {
         seenByClient: user.role === "CLIENT" ? false : undefined,
         seenByClientAssistant:

@@ -3,6 +3,7 @@ import {
   ClientRole,
   EmployeeRole,
   type Order,
+  OrderTimeline,
   ReportType,
 } from "@prisma/client";
 import {AppError} from "../../lib/AppError";
@@ -40,6 +41,7 @@ export class ReportsService {
   }) {
     let orders: ReturnType<typeof orderReform>[];
     let ordersIDs: string[] = [];
+
     if (data.reportData.ordersIDs === "*") {
       orders = (
         await ordersRepository.getAllOrdersPaginated({
@@ -250,6 +252,11 @@ export class ReportsService {
       companyNet: 0,
       branchNet: 0,
     };
+    let insideOrdersCount = 0;
+    let total = 0;
+    let baghdadTotal = 0;
+    let otherTotal = 0;
+    let insideTotal = 0;
 
     for (const order of orders) {
       // @ts-expect-error Fix later
@@ -333,6 +340,27 @@ export class ReportsService {
       if (!order) {
         continue;
       }
+      if (
+        reportData?.type === "CLIENT" &&
+        reportData.clientReport?.branch?.id === order?.branch?.id
+      ) {
+        insideOrdersCount += 1;
+      }
+      total += order?.clientNet || 0;
+      if (
+        reportData?.type === "CLIENT" &&
+        reportData.clientReport?.branch?.id === order?.branch?.id
+      ) {
+        insideOrdersCount += 1;
+        insideTotal += order?.clientNet || 0;
+      }
+      if (reportData?.type === "CLIENT" && order?.governorate === "BAGHDAD") {
+        baghdadTotal += order?.clientNet;
+      }
+      if (reportData?.type === "CLIENT" && order?.governorate !== "BAGHDAD") {
+        otherTotal += order?.clientNet || 0;
+      }
+
       await ordersRepository.updateOrderTimeline({
         orderID: order.id,
         data: {
@@ -354,6 +382,11 @@ export class ReportsService {
       });
     }
 
+    reportData.insideOrdersCount = insideOrdersCount;
+    reportData.total = total;
+    reportData.insideTotal = insideTotal;
+    reportData.baghdadTotal = baghdadTotal;
+    reportData.otherTotal = otherTotal;
     const pdf = await generateReport(data.reportData.type, reportData, orders);
 
     return pdf;
@@ -467,120 +500,180 @@ export class ReportsService {
     return report;
   }
 
-  async getReportPDF(data: {params: {reportID: number}}) {
+  async getReportPDF(data: {
+    params: {reportID: number};
+    loggedInUser?: loggedInUserType;
+  }) {
     const reportData = await reportsRepository.getReport({
       reportID: data.params.reportID,
     });
 
+    if (!reportData) {
+      throw new AppError("الكشف المطلوب غير موجود", 404);
+    }
     if (reportData?.deleted) {
       throw new AppError("الكشف المطلوب موجود بسلة المحذوفات", 404);
     }
 
-    // TODO: fix this
-    // @ts-expect-error Fix later
-    const orders: Order[] = reportData?.repositoryReport
-      ? // @tts-expect-error: Unreachable code error
-        reportData?.repositoryReport.repositoryReportOrders
-      : reportData?.branchReport
-      ? // @tts-expect-error: Unreachable code error
-        reportData?.branchReport.branchReportOrders
-      : reportData?.clientReport
-      ? // @tts-expect-error: Unreachable code error
-        reportData?.clientReport.clientReportOrders
-      : reportData?.deliveryAgentReport
-      ? // @tts-expect-error: Unreachable code error
-        reportData?.deliveryAgentReport.deliveryAgentReportOrders
-      : reportData?.governorateReport
-      ? // @tts-expect-error: Unreachable code error
-        reportData?.governorateReport.governorateReportOrders
-      : reportData?.companyReport
-      ? // @tts-expect-error: Unreachable code error
-        reportData?.companyReport.companyReportOrders
-      : [];
+    // ===== Permission check =====
+    const user = data.loggedInUser;
+    if (user && user.role !== "COMPANY_MANAGER" && !user.mainRepository) {
+      const isSameBranch = reportData.createdByBrachId === user.branchId;
+      const type = reportData.type;
 
-    const ordersIDs = orders.map((order) => order.id);
-
-    let ordersData = await ordersRepository.getOrdersByIDs({
-      ordersIDs: ordersIDs,
-    });
-
-    for (const [index, order] of ordersData.entries()) {
-      const timeline = await prisma.orderTimeline.findMany({
-        where: {
-          type: "PAID_AMOUNT_CHANGE",
-          orderId: order?.id,
-        },
-      });
-
-      for (const time of timeline) {
-        if (time.createdAt > reportData?.createdAt!!) {
-          const value = JSON.parse(time.old?.toString() || "{}") as {
-            value?: number;
-          };
-
-          if (value.value !== undefined && order) {
-            order.paidAmount = +value.value;
-            if (
-              reportData?.type === "CLIENT" &&
-              order.governorate === "BAGHDAD"
-            ) {
-              console.log(reportData.clientReport?.baghdadDeliveryCost);
-
-              order.clientNet =
-                +value.value - reportData.clientReport?.baghdadDeliveryCost!!;
-            }
-            if (
-              reportData?.type === "CLIENT" &&
-              order.governorate !== "BAGHDAD"
-            ) {
-              order.clientNet =
-                +value.value -
-                reportData.clientReport?.governoratesDeliveryCost!!;
-            }
-
-            if (
-              reportData?.type === "BRANCH" &&
-              order.governorate === "BAGHDAD"
-            ) {
-              order.branchNet =
-                +value.value - reportData.branchReport?.baghdadDeliveryCost!!;
-            }
-            if (
-              reportData?.type === "BRANCH" &&
-              order.governorate !== "BAGHDAD"
-            ) {
-              order.branchNet =
-                +value.value -
-                reportData.branchReport?.governoratesDeliveryCost!!;
-            }
-            if (reportData?.type === "DELIVERY_AGENT") {
-              const weight = order.weight || 0;
-
-              const deliveryAgentNet =
-                reportData.deliveryAgentReport?.deliveryAgentDeliveryCost!! +
-                weight * 250;
-
-              const companyNet = (order.paidAmount || 0) - deliveryAgentNet;
-
-              order.deliveryAgentNet = deliveryAgentNet;
-              order.companyNet = companyNet;
-            }
-            ordersData[index] = order;
-            break;
-          }
-        }
+      if (
+        (type === "CLIENT" && !isSameBranch) ||
+        (type === "DELIVERY_AGENT" && !isSameBranch) ||
+        (type === "BRANCH" &&
+          reportData.branchReport?.branch.id !== user.branchId)
+      ) {
+        throw new AppError("غير مصرح لك بالاطلاع علي هذا الكشف", 400);
       }
     }
 
-    if (ordersData.length === 0) {
+    // ========= Extract orders ==========
+    // TODO: fix this
+    // @ts-expect-error Fix later
+    const orders: Order[] =
+      reportData.repositoryReport?.repositoryReportOrders ??
+      reportData.branchReport?.branchReportOrders ??
+      reportData.clientReport?.clientReportOrders ??
+      reportData.deliveryAgentReport?.deliveryAgentReportOrders ??
+      reportData.governorateReport?.governorateReportOrders ??
+      reportData.companyReport?.companyReportOrders ??
+      [];
+
+    if (orders.length === 0) {
       throw new AppError("لا يوجد طلبات", 404);
     }
-    const pdf = await generateReport(
-      // @ts-expect-error Fix later
-      reportData.type,
-      reportData,
-      ordersData
+
+    const ordersIDs = orders.map((o) => o.id);
+
+    // ========= Fetch orders data ==========
+    let ordersData = await ordersRepository.getOrdersByIDs({
+      ordersIDs,
+    });
+
+    // ========= Fetch all timelines in one query ==========
+    const timelines = await prisma.orderTimeline.findMany({
+      where: {
+        type: "PAID_AMOUNT_CHANGE",
+        orderId: {in: ordersIDs},
+      },
+    });
+
+    // ========= Group timelines by order ==========
+    const timelineMap = timelines.reduce<Record<string, OrderTimeline[]>>(
+      (acc, t) => {
+        const id = Number(t.orderId);
+        if (!acc[id]) acc[id] = [];
+        acc[id].push(t);
+        return acc;
+      },
+      {}
     );
+
+    // Sort each timeline list descending by date (fastest access)
+    Object.values(timelineMap).forEach((list) =>
+      list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    );
+
+    // ========= Pre-calculate reusable variables ==========
+    const type = reportData.type;
+    const createdAt = reportData.createdAt!!;
+
+    const branchId = reportData.clientReport?.branch?.id;
+
+    const baghdadCost =
+      (type === "CLIENT" && reportData.clientReport?.baghdadDeliveryCost) ||
+      (type === "BRANCH" && reportData.branchReport?.baghdadDeliveryCost) ||
+      0;
+
+    const governorateCost =
+      (type === "CLIENT" &&
+        reportData.clientReport?.governoratesDeliveryCost) ||
+      (type === "BRANCH" &&
+        reportData.branchReport?.governoratesDeliveryCost) ||
+      0;
+
+    const deliveryBaseCost =
+      type === "DELIVERY_AGENT"
+        ? reportData.deliveryAgentReport?.deliveryAgentDeliveryCost || 0
+        : 0;
+
+    // ========= Accumulators ==========
+    let insideOrdersCount = 0;
+    let total = 0;
+    let insideTotal = 0;
+    let baghdadTotal = 0;
+    let otherTotal = 0;
+
+    // ========= Process all orders FAST ==========
+    for (const order of ordersData) {
+      if (!order) continue;
+
+      const paidBefore = order.paidAmount || 0;
+      let newPaidAmount = paidBefore;
+
+      // ==== Find latest paidAmountChange AFTER report created ====
+      const tList = timelineMap[order.id];
+      if (tList && tList.length) {
+        const latest = tList.find((t) => t.createdAt > createdAt);
+        if (latest) {
+          const val = JSON.parse(latest.old?.toString() || "{}") as {
+            value?: number;
+          };
+          if (val.value !== undefined) newPaidAmount = Number(val.value);
+        }
+      }
+
+      // ==== Update net amounts only once ====
+      order.paidAmount = newPaidAmount;
+
+      if (type === "CLIENT") {
+        if (order.governorate === "BAGHDAD") {
+          order.clientNet = newPaidAmount - order.deliveryCost;
+          total += newPaidAmount - order.deliveryCost;
+          baghdadTotal += newPaidAmount - order.deliveryCost;
+          if (branchId === order.branch?.id) {
+            insideOrdersCount++;
+            insideTotal += newPaidAmount - order.deliveryCost;
+          }
+        } else {
+          order.clientNet = newPaidAmount - order.deliveryCost;
+          otherTotal += newPaidAmount - order.deliveryCost;
+          total += newPaidAmount - order.deliveryCost;
+          if (branchId === order.branch?.id) {
+            insideOrdersCount++;
+            insideTotal += newPaidAmount - order.deliveryCost;
+          }
+        }
+      }
+
+      if (type === "BRANCH") {
+        if (order.governorate === "BAGHDAD")
+          order.branchNet = newPaidAmount - baghdadCost;
+        else order.branchNet = newPaidAmount - governorateCost;
+      }
+
+      if (type === "DELIVERY_AGENT") {
+        const weightCost = (order.weight || 0) * 250;
+        const deliveryNet = deliveryBaseCost + weightCost;
+        order.deliveryAgentNet = deliveryNet;
+        order.companyNet = newPaidAmount - deliveryNet;
+      }
+    }
+
+    // ========= Assign totals to reportData ==========
+    reportData.insideOrdersCount = insideOrdersCount;
+    reportData.total = total;
+    reportData.insideTotal = insideTotal;
+    reportData.baghdadTotal = baghdadTotal;
+    reportData.otherTotal = otherTotal;
+
+    // ========= Generate PDF ==========
+    const pdf = await generateReport(reportData.type, reportData, ordersData);
+
     return pdf;
   }
 

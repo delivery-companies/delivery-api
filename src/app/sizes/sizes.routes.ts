@@ -1,20 +1,20 @@
-import { Router } from "express";
+import {Router} from "express";
 
-import { AdminRole, ClientRole, EmployeeRole } from "@prisma/client";
-import { isAutherized } from "../../middlewares/isAutherized";
+import {ClientRole, EmployeeRole} from "@prisma/client";
+import {isAutherized} from "../../middlewares/isAutherized";
 // import { Role } from "@prisma/client";
 // import { isAutherized } from "../../middlewares/isAutherized.middleware";
-import { isLoggedIn } from "../../middlewares/isLoggedIn";
-import { SizesController } from "./sizes.controller";
+import {isLoggedIn} from "../../middlewares/isLoggedIn";
+import {SizesController} from "./sizes.controller";
 
 const router = Router();
 const sizesController = new SizesController();
 
 router.route("/sizes").post(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    sizesController.createSize
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  sizesController.createSize
+  /*
         #swagger.tags = ['Sizes Routes']
 
         #swagger.requestBody = {
@@ -32,15 +32,16 @@ router.route("/sizes").post(
 );
 
 router.route("/sizes").get(
-    isLoggedIn,
-    isAutherized([
-        EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT,
-        //TODO: Remove later
-        ...Object.values(EmployeeRole),
-        ...Object.values(ClientRole)
-    ]),
-    sizesController.getAllSizes
-    /*
+  isLoggedIn,
+  isAutherized([
+    EmployeeRole.CLIENT_ASSISTANT,
+    ClientRole.CLIENT,
+    //TODO: Remove later
+    ...Object.values(EmployeeRole),
+    ...Object.values(ClientRole),
+  ]),
+  sizesController.getAllSizes
+  /*
         #swagger.tags = ['Sizes Routes']
 
         #swagger.parameters['page'] = {
@@ -58,19 +59,19 @@ router.route("/sizes").get(
 );
 
 router.route("/sizes/:sizeID").get(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    sizesController.getSize
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  sizesController.getSize
+  /*
         #swagger.tags = ['Sizes Routes']
     */
 );
 
 router.route("/sizes/:sizeID").patch(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    sizesController.updateSize
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  sizesController.updateSize
+  /*
         #swagger.tags = ['Sizes Routes']
 
         #swagger.requestBody = {
@@ -88,10 +89,10 @@ router.route("/sizes/:sizeID").patch(
 );
 
 router.route("/sizes/:sizeID").delete(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    sizesController.deleteSize
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  sizesController.deleteSize
+  /*
         #swagger.tags = ['Sizes Routes']
     */
 );

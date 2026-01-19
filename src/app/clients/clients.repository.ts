@@ -1,11 +1,8 @@
-import { Prisma } from "@prisma/client";
-import { prisma } from "../../database/db";
-import type {
-  ClientCreateTypeWithUserID,
-  ClientUpdateType,
-} from "./clients.dto";
-import { clientReform, clientSelect } from "./clients.responses";
-import { loggedInUserType } from "../../types/user";
+import {Prisma} from "@prisma/client";
+import {prisma} from "../../database/db";
+import type {ClientCreateTypeWithUserID, ClientUpdateType} from "./clients.dto";
+import {clientReform, clientSelect} from "./clients.responses";
+import {loggedInUserType} from "../../types/user";
 
 export class ClientsRepository {
   async createClient(companyID: number, data: ClientCreateTypeWithUserID) {
@@ -40,6 +37,7 @@ export class ClientsRepository {
         token: data.token,
         showNumbers: data.showNumbers,
         showDeliveryNumber: data.showDeliveryNumber,
+        isExternal: data.isExternal,
         branch: data.branchID
           ? {
               connect: {
@@ -103,27 +101,25 @@ export class ClientsRepository {
 
     const where = {
       AND: [
-        { deleted: filters.deleted === "true" },
-        { company: { id: filters.companyID } },
-        { branch: filters.branchID ? { id: filters.branchID } : undefined },
-        { user: { phone: filters.phone } },
-        { user: { name: { contains: filters.name } } },
+        {deleted: filters.deleted === "true"},
+        {company: {id: filters.companyID}},
+        {branch: filters.branchID ? {id: filters.branchID} : undefined},
+        {user: {phone: filters.phone}},
+        {user: {name: {contains: filters.name}}},
         // TODO
         {
-          stores: filters.storeID
-            ? { some: { id: filters.storeID } }
-            : undefined,
+          stores: filters.storeID ? {some: {id: filters.storeID}} : undefined,
         },
         {
           AND:
             filters.loggedInUser?.role === "CLIENT"
-              ? { id: filters.loggedInUser.id }
+              ? {id: filters.loggedInUser.id}
               : undefined,
         },
         {
           AND:
             filters.loggedInUser?.role === "CLIENT_ASSISTANT"
-              ? { id: { in: clientIDs } }
+              ? {id: {in: clientIDs}}
               : undefined,
         },
       ],
@@ -178,7 +174,7 @@ export class ClientsRepository {
     };
   }
 
-  async getClient(data: { clientID: number }) {
+  async getClient(data: {clientID: number}) {
     const client = await prisma.client.findUnique({
       where: {
         id: data.clientID,
@@ -203,21 +199,15 @@ export class ClientsRepository {
             name: data.clientData.name,
             username: data.clientData.username,
             password: data.clientData.password,
-            // phone: data.clientData.phone,
+            phone: data.clientData.phone,
             fcm: data.clientData.fcm,
             avatar: data.clientData.avatar,
           },
         },
-        // company: data.clientData.companyID
-        //     ? {
-        //           connect: {
-        //               id: data.clientData.companyID
-        //           }
-        //       }
-        //     : undefined,
         role: data.clientData.role,
         token: data.clientData.token,
         showNumbers: data.clientData.showNumbers,
+        isExternal: data.clientData.isExternal,
         showDeliveryNumber: data.clientData.showDeliveryNumber,
         branch: data.clientData.branchID
           ? {
@@ -240,7 +230,7 @@ export class ClientsRepository {
     return clientReform(client);
   }
 
-  async deleteClient(data: { clientID: number }) {
+  async deleteClient(data: {clientID: number}) {
     await prisma.$transaction([
       prisma.client.delete({
         where: {
@@ -256,7 +246,7 @@ export class ClientsRepository {
     return true;
   }
 
-  async deactivateClient(data: { clientID: number; deletedByID: number }) {
+  async deactivateClient(data: {clientID: number; deletedByID: number}) {
     const deletedClient = await prisma.client.update({
       where: {
         id: data.clientID,
@@ -274,7 +264,7 @@ export class ClientsRepository {
     return deletedClient;
   }
 
-  async reactivateClient(data: { clientID: number }) {
+  async reactivateClient(data: {clientID: number}) {
     const deletedClient = await prisma.client.update({
       where: {
         id: data.clientID,
@@ -286,7 +276,7 @@ export class ClientsRepository {
     return deletedClient;
   }
 
-  async getClientIDByStoreID(data: { storeID: number }) {
+  async getClientIDByStoreID(data: {storeID: number}) {
     const store = await prisma.store.findUnique({
       where: {
         id: data.storeID,

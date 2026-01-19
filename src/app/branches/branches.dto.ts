@@ -1,7 +1,7 @@
 // // import { generateMock } from "@anatine/zod-mock";
-import { generateSchema } from "@anatine/zod-openapi";
-import { Governorate } from "@prisma/client";
-import { z } from "zod";
+import {generateSchema} from "@anatine/zod-openapi";
+import {Governorate} from "@prisma/client";
+import {z} from "zod";
 
 export const BranchCreateSchema = z.object({
   name: z.string().min(3),

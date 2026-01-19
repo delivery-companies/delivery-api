@@ -88,19 +88,17 @@ export const automaticUpdatesTask = async () => {
           const lastUpdate = new Date(order.updatedAt);
           const difference = currentDate.getTime() - lastUpdate.getTime();
           const hoursDifference = difference / (1000 * 3600);
-          const hours24 = lastUpdate.getHours();
           let paidAmount: number | undefined = undefined;
           let clientNet: number | undefined = undefined;
-
+          const updateHour =
+            automaticUpdate.updateAt === 24 ? 0 : automaticUpdate.updateAt!!; // handle midnight
+          const currentHour = currentDate.getHours();
           if (
             automaticUpdate.checkAfter &&
             hoursDifference < automaticUpdate.checkAfter
           ) {
             continue;
-          } else if (
-            automaticUpdate.updateAt &&
-            automaticUpdate.updateAt + 3 < hours24
-          ) {
+          } else if (currentHour < updateHour) {
             continue;
           }
 

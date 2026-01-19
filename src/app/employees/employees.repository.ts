@@ -91,18 +91,21 @@ export class EmployeesRepository {
               },
             }
           : undefined,
-        managedStores: data.employeeData.storesIDs
-          ? {
-              connect: data.employeeData.storesIDs.map((storeID) => {
-                return {
-                  id: storeID,
-                };
-              }),
-            }
-          : undefined,
         inquiryStores: data.employeeData.inquiryStoresIDs
           ? {
               create: data.employeeData.inquiryStoresIDs.map((storeID) => {
+                return {
+                  store: {
+                    connect: {
+                      id: storeID,
+                    },
+                  },
+                };
+              }),
+            }
+          : data.employeeData.storesIDs
+          ? {
+              create: data.employeeData.storesIDs.map((storeID) => {
                 return {
                   store: {
                     connect: {
@@ -182,9 +185,22 @@ export class EmployeesRepository {
     loggedInUser: loggedInUserType;
   }) {
     let emergency = false;
+    let mainEmergency = false;
 
     if (data.filters.roles?.includes("EMERGENCY_EMPLOYEE")) {
       emergency = true;
+    }
+    if (data.filters.roles?.includes("MAIN_EMERGENCY_EMPLOYEE")) {
+      mainEmergency = true;
+    }
+    let deliveryStartDate = new Date();
+    let deliveryEndDate = new Date();
+
+    if (data.filters.ordersStartDate) {
+      deliveryStartDate = new Date(data.filters.ordersStartDate);
+    }
+    if (data.filters.ordersEndDate) {
+      deliveryEndDate = new Date(data.filters.ordersEndDate);
     }
 
     const where = {
@@ -224,6 +240,13 @@ export class EmployeesRepository {
         },
         {
           emergency:
+            data.filters.role === "INQUIRY_EMPLOYEE" ||
+            data.filters.roles?.includes("INQUIRY_EMPLOYEE")
+              ? false
+              : undefined,
+        },
+        {
+          mainEmergency:
             data.filters.role === "INQUIRY_EMPLOYEE" ||
             data.filters.roles?.includes("INQUIRY_EMPLOYEE")
               ? false
@@ -271,6 +294,7 @@ export class EmployeesRepository {
           where: where,
           select: {
             id: true,
+            branchId: true,
             user: {
               select: {
                 name: true,
@@ -288,21 +312,11 @@ export class EmployeesRepository {
           return {
             id: employee.id,
             name: employee.user.name,
+            branchId: employee.branchId,
           };
         }),
         pagesCount: employees.pagesCount,
       };
-    }
-
-    let startDate = new Date();
-    let endDate = new Date();
-
-    if (data.filters.ordersStartDate) {
-      startDate = new Date(data.filters.ordersStartDate);
-      // startDate.setHours(0, 0, 0, 0);
-    }
-    if (data.filters.ordersEndDate) {
-      endDate = new Date(data.filters.ordersEndDate);
     }
 
     const employees = await prisma.employee.findManyPaginated(
@@ -313,6 +327,12 @@ export class EmployeesRepository {
             emergency
               ? {
                   emergency: true,
+                  role: "INQUIRY_EMPLOYEE",
+                  companyId: data.loggedInUser.companyID ?? undefined,
+                }
+              : mainEmergency
+              ? {
+                  mainEmergency: true,
                   role: "INQUIRY_EMPLOYEE",
                   companyId: data.loggedInUser.companyID ?? undefined,
                 }
@@ -334,7 +354,7 @@ export class EmployeesRepository {
                     {
                       deliveryDate: data.filters.ordersStartDate
                         ? {
-                            gte: startDate,
+                            gte: deliveryStartDate,
                           }
                         : undefined,
                     },
@@ -342,7 +362,7 @@ export class EmployeesRepository {
                     {
                       deliveryDate: data.filters.ordersEndDate
                         ? {
-                            lt: endDate,
+                            lt: deliveryEndDate,
                           }
                         : undefined,
                     },
@@ -525,15 +545,6 @@ export class EmployeesRepository {
               },
             }
           : undefined,
-        managedStores: data.employeeData.storesIDs
-          ? {
-              set: data.employeeData.storesIDs.map((storeID) => {
-                return {
-                  id: storeID,
-                };
-              }),
-            }
-          : undefined,
         inquiryClients: data.employeeData.inquiryClientsIDs
           ? {
               deleteMany: {
@@ -556,6 +567,21 @@ export class EmployeesRepository {
                 inquiryEmployeeId: data.employeeID,
               },
               create: data.employeeData.inquiryStoresIDs.map((storeID) => {
+                return {
+                  store: {
+                    connect: {
+                      id: storeID,
+                    },
+                  },
+                };
+              }),
+            }
+          : data.employeeData.storesIDs
+          ? {
+              deleteMany: {
+                inquiryEmployeeId: data.employeeID,
+              },
+              create: data.employeeData.storesIDs.map((storeID) => {
                 return {
                   store: {
                     connect: {

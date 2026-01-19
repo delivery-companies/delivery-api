@@ -12,12 +12,12 @@ export const generateReceipts = async (
   try {
     const templatePath = path.join(
       __dirname,
-      "../../../../static/templates/receipt2.hbs"
+      "../../../static/templates/receipt2.hbs"
     );
 
     const template = await fs.readFile(templatePath, "utf8");
     const css = await fs.readFile(
-      path.join(__dirname, "../../../../static/styles/receiptStyle.css"),
+      path.join(__dirname, "../../../static/styles/receiptStyle.css"),
       "utf8"
     );
 

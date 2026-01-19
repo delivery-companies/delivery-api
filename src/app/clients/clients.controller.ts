@@ -1,14 +1,16 @@
-import { AdminRole, ClientRole, EmployeeRole } from "@prisma/client";
+import {AdminRole, ClientRole, EmployeeRole} from "@prisma/client";
 import * as bcrypt from "bcrypt";
-import { env } from "../../config";
-import { AppError } from "../../lib/AppError";
-import { catchAsync } from "../../lib/catchAsync";
-import type { loggedInUserType } from "../../types/user";
+import {env} from "../../config";
+import {AppError} from "../../lib/AppError";
+import {catchAsync} from "../../lib/catchAsync";
+import type {loggedInUserType} from "../../types/user";
 // import { BranchesRepository } from "../branches/branches.repository";
-import { EmployeesRepository } from "../employees/employees.repository";
-import { sendNotification } from "../notifications/helpers/sendNotification";
-import { ClientCreateSchema, ClientUpdateSchema } from "./clients.dto";
-import { ClientsRepository } from "./clients.repository";
+import {EmployeesRepository} from "../employees/employees.repository";
+import {sendNotification} from "../notifications/helpers/sendNotification";
+import {ClientCreateSchema, ClientUpdateSchema} from "./clients.dto";
+import {ClientsRepository} from "./clients.repository";
+import crypto from "crypto";
+import {prisma} from "../../database/db";
 
 const clientsRepository = new ClientsRepository();
 const employeesRepository = new EmployeesRepository();
@@ -18,7 +20,7 @@ export class ClientsController {
   createClient = catchAsync(async (req, res) => {
     const clientData = ClientCreateSchema.parse(req.body);
     let companyID = +res.locals.user.companyID;
-    const { password, ...rest } = clientData;
+    const {password, ...rest} = clientData;
 
     let avatar: string | undefined;
     if (req.file) {
@@ -53,6 +55,43 @@ export class ClientsController {
     res.status(200).json({
       status: "success",
       data: createdClient,
+    });
+  });
+
+  generateApikey = catchAsync(async (req, res) => {
+    const {id} = req.body;
+
+    if (!id) {
+      throw new AppError("Client name and permissions are required", 400);
+    }
+
+    const client = await clientsRepository.getClient({
+      clientID: id,
+    });
+
+    if (!client) {
+      throw new AppError("Client not found", 404);
+    }
+
+    const rawApiKey = `albarq_live_${crypto.randomBytes(32).toString("hex")}`;
+
+    const apiKeyHash = crypto
+      .createHash("sha256")
+      .update(rawApiKey)
+      .digest("hex");
+
+    await prisma.client.update({
+      where: {
+        id: client.id,
+      },
+      data: {
+        apiKeyHash,
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+      apiKey: rawApiKey,
     });
   });
 
@@ -113,7 +152,7 @@ export class ClientsController {
       page = +req.query.page;
     }
 
-    const { clients, pagesCount } =
+    const {clients, pagesCount} =
       await clientsRepository.getAllClientsPaginated({
         page: page,
         size: size,
@@ -173,7 +212,7 @@ export class ClientsController {
       clientID: clientID,
     });
 
-    const { password, ...rest } = clientData;
+    const {password, ...rest} = clientData;
 
     // hash the password
     const hashedPassword = bcrypt.hashSync(

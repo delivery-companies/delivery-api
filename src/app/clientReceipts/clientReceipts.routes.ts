@@ -1,8 +1,8 @@
-import { ClientRole, EmployeeRole, Permission } from "@prisma/client";
-import { Router } from "express";
-import { isAutherized } from "../../middlewares/isAutherized";
-import { isLoggedIn } from "../../middlewares/isLoggedIn";
-import { ClientReceiptController } from "./clientReceipts.controller";
+import {ClientRole, EmployeeRole} from "@prisma/client";
+import {Router} from "express";
+import {isAutherized} from "../../middlewares/isAutherized";
+import {isLoggedIn} from "../../middlewares/isLoggedIn";
+import {ClientReceiptController} from "./clientReceipts.controller";
 
 const router = Router();
 const clientReceiptController = new ClientReceiptController();

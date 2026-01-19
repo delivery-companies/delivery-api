@@ -8,14 +8,35 @@ import {OrdersController} from "./orders.controller";
 import {preventDuplicateRequests} from "../../middlewares/preventDuplicateRequests";
 
 import multer from "multer";
+import {isApiClient} from "../../middlewares/isApiClient";
 const upload = multer();
 const router = Router();
 const ordersController = new OrdersController();
+
+router.post("/orders/update-from-csv", ordersController.updateOrderCsv);
 
 router
   .route("/orders")
   .post(
     isLoggedIn,
+    isAutherized(
+      [
+        EmployeeRole.COMPANY_MANAGER,
+        EmployeeRole.DATA_ENTRY,
+        EmployeeRole.ACCOUNTANT,
+        ClientRole.CLIENT,
+        EmployeeRole.CLIENT_ASSISTANT,
+      ],
+      [Permission.ADD_ORDER]
+    ),
+    preventDuplicateRequests,
+    ordersController.createOrder
+  );
+
+router
+  .route("/orders/create")
+  .post(
+    isApiClient,
     isAutherized(
       [
         EmployeeRole.COMPANY_MANAGER,
@@ -163,25 +184,19 @@ router.route("/orders").get(
     */
 );
 
-// TODO: Remove this route
-// router.route("/orders/statuses").get(
-//     isLoggedIn,
-//     // isAutherized([Role.ADMIN]),
-//     getAllOrdersStatuses
-//     /*
-//         #swagger.tags = ['Orders Routes']
-//     */
-// );
+router
+  .route("/orders/getAll")
+  .get(
+    isApiClient,
+    isAutherized([
+      ...Object.values(AdminRole),
+      ...Object.values(EmployeeRole),
+      ...Object.values(ClientRole),
+    ]),
+    ordersController.getAllOrdersApiKey
+  );
 
-// TODO: Remove this route
-// router.route("/orders/today").get(
-//     isLoggedIn,
-//     // isAutherized([Role.ADMIN]),
-//     getTodayOrdersCountAndEarnings
-//     /*
-//         #swagger.tags = ['Orders Routes']
-//     */
-// );
+router.route("/getGeneralInfo").get(ordersController.getGeneralInfo);
 
 router.route("/orders/statistics").get(
   isLoggedIn,
@@ -196,99 +211,21 @@ router.route("/orders/statistics").get(
     ...Object.values(ClientRole),
   ]),
   ordersController.getOrdersStatistics
-  /*
-        #swagger.tags = ['Orders Routes']
+);
 
-        #swagger.parameters['statuseses'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['delivery_type'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['location_id'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['store_id'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['client_id'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['company_id'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['client_report'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['branch_report'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['repository_report'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['delivery_agent_report'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['governorate_report'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['company_report'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['start_date'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['end_date'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-
-        #swagger.parameters['governorate'] = {
-            in: 'query',
-            description: '',
-            required: false
-        }
-    */
+router.route("/orders/v2/statistics").get(
+  isLoggedIn,
+  isAutherized([
+    AdminRole.ADMIN,
+    AdminRole.ADMIN_ASSISTANT,
+    EmployeeRole.COMPANY_MANAGER,
+    ClientRole.CLIENT,
+    EmployeeRole.CLIENT_ASSISTANT,
+    // TODO: Remove later
+    ...Object.values(EmployeeRole),
+    ...Object.values(ClientRole),
+  ]),
+  ordersController.getOrdersStatisticsV2
 );
 
 router.route("/orders/clientStatistics").get(
@@ -335,6 +272,20 @@ router.route("/orders/repositoryStatusStatistics").get(
   ordersController.getRepositorOrdersStatistics
 );
 
+router.route("/orders/returnedRepositoryStatusStatistics").get(
+  isLoggedIn,
+  isAutherized([
+    AdminRole.ADMIN,
+    AdminRole.ADMIN_ASSISTANT,
+    EmployeeRole.COMPANY_MANAGER,
+    ClientRole.CLIENT,
+    EmployeeRole.CLIENT_ASSISTANT,
+    // TODO: Remove later
+    ...Object.values(EmployeeRole),
+    ...Object.values(ClientRole),
+  ]),
+  ordersController.getReturnedRepositorOrdersStatistics
+);
 router.route("/orders/repositoryOrders").get(
   isLoggedIn,
   isAutherized([
@@ -367,6 +318,20 @@ router.route("/orders/pdf").post(
         #swagger.tags = ['Orders Routes']
     */
 );
+
+router.route("/repository-orders/pdf").post(
+  isLoggedIn,
+  isAutherized([
+    ...Object.values(AdminRole),
+    ...Object.values(EmployeeRole),
+    ...Object.values(ClientRole),
+  ]),
+  ordersController.getRepositoryOrdersPDF
+  /*
+        #swagger.tags = ['Orders Routes']
+    */
+);
+
 router.route("/orders/getByStore").get(
   isLoggedIn,
   isAutherized([
@@ -379,6 +344,7 @@ router.route("/orders/getByStore").get(
         #swagger.tags = ['Orders Routes']
     */
 );
+
 router
   .route("/orders/pdf/getAll")
   .get(
@@ -390,6 +356,7 @@ router
     ]),
     ordersController.getPdfs
   );
+
 router.route("/orders/getById/:orderID").get(
   isLoggedIn,
   isAutherized([
@@ -402,6 +369,18 @@ router.route("/orders/getById/:orderID").get(
         #swagger.tags = ['Orders Routes']
     */
 );
+
+router
+  .route("/orders/getOne/:orderID")
+  .get(
+    isApiClient,
+    isAutherized([
+      ...Object.values(AdminRole),
+      ...Object.values(EmployeeRole),
+      ...Object.values(ClientRole),
+    ]),
+    ordersController.getOrderByIdApiKey
+  );
 
 router
   .route("/orders/pdf/:id")
@@ -436,6 +415,19 @@ router.route("/orders/:orderID/timeline").get(
     ...Object.values(ClientRole),
   ]),
   ordersController.getOrderTimeline
+  /*
+        #swagger.tags = ['Orders Routes']
+    */
+);
+
+router.route("/orders/:orderID/orderTimeline").get(
+  isApiClient,
+  isAutherized([
+    ...Object.values(AdminRole),
+    ...Object.values(EmployeeRole),
+    ...Object.values(ClientRole),
+  ]),
+  ordersController.getOrderTimelineApiKey
   /*
         #swagger.tags = ['Orders Routes']
     */
@@ -480,30 +472,29 @@ router.route("/orders/:orderID/chat").post(
     */
 );
 
-router.route("/orders/receipts").post(
-  isLoggedIn,
-  isAutherized([
-    ...Object.values(AdminRole),
-    ...Object.values(EmployeeRole),
-    ...Object.values(ClientRole),
-  ]),
-  ordersController.createOrdersReceipts
-  /*
-        #swagger.tags = ['Orders Routes']
+router
+  .route("/orders/receipts")
+  .post(
+    isLoggedIn,
+    isAutherized([
+      ...Object.values(AdminRole),
+      ...Object.values(EmployeeRole),
+      ...Object.values(ClientRole),
+    ]),
+    ordersController.createOrdersReceipts
+  );
 
-        #swagger.requestBody = {
-            required: true,
-            content: {
-                "application/json": {
-                    "schema": { $ref: "#/components/schemas/OrdersReceiptsCreateSchema" },
-                    "examples": {
-                        "OrderCreateExample": { $ref: "#/components/examples/OrdersReceiptsCreateExample" }
-                    }
-                }
-            }
-        }
-    */
-);
+router
+  .route("/orders/receiptsPdf")
+  .post(
+    isApiClient,
+    isAutherized([
+      ...Object.values(AdminRole),
+      ...Object.values(EmployeeRole),
+      ...Object.values(ClientRole),
+    ]),
+    ordersController.createOrdersReceipts
+  );
 
 router.route("/orders/:orderID").patch(
   upload.none(), // Handles form-data without files
@@ -530,21 +521,6 @@ router.route("/orders/:orderID").patch(
     ]
   ),
   ordersController.updateOrder
-  /*
-        #swagger.tags = ['Orders Routes']
-
-        #swagger.requestBody = {
-            required: true,
-            content: {
-                "application/json": {
-                    "schema": { $ref: "#/components/schemas/OrderUpdateSchema" },
-                    "examples": {
-                        "OrderUpdateExample": { $ref: "#/components/examples/OrderUpdateExample" }
-                    }
-                }
-            }
-        }
-    */
 );
 
 router
@@ -574,6 +550,21 @@ router
       ]
     ),
     ordersController.sendOrdersToReceivingAgent
+  );
+
+router
+  .route("/orders/sendOrderToShipped")
+  .post(
+    isApiClient,
+    isAutherized(
+      [
+        ...Object.values(AdminRole),
+        ...Object.values(EmployeeRole),
+        ...Object.values(ClientRole),
+      ],
+      []
+    ),
+    ordersController.sendOrdersToReceivingAgentApiKey
   );
 
 //  تأكيد مباشر برقم الطل في صفحة ادخال الطلبات المخزن

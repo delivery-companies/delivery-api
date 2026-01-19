@@ -118,6 +118,7 @@ export const orderSelect = {
   forwardedRepo: true,
   forwardedBranchId: true,
   receivedBranchId: true,
+  branchDeliveryCost: true,
   processedBy: {
     select: {
       user: {
@@ -222,6 +223,7 @@ export const orderSelect = {
       storeId: true,
       report: {
         select: {
+          url: true,
           deleted: true,
         },
       },
@@ -235,6 +237,7 @@ export const orderSelect = {
       repositoryId: true,
       report: {
         select: {
+          url: true,
           deleted: true,
         },
       },
@@ -247,6 +250,7 @@ export const orderSelect = {
       type: true,
       report: {
         select: {
+          url: true,
           deleted: true,
         },
       },
@@ -258,6 +262,7 @@ export const orderSelect = {
       deliveryAgentId: true,
       report: {
         select: {
+          url: true,
           deleted: true,
         },
       },
@@ -269,6 +274,7 @@ export const orderSelect = {
       governorate: true,
       report: {
         select: {
+          url: true,
           deleted: true,
         },
       },
@@ -281,6 +287,7 @@ export const orderSelect = {
       companyId: true,
       report: {
         select: {
+          url: true,
           deleted: true,
         },
       },
@@ -310,6 +317,70 @@ export const orderSelect = {
   deletedAt: true,
   forwardedToGov: true,
   forwardedToMainRepo: true,
+  deletedBy: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+} satisfies Prisma.OrderSelect;
+
+export const orderSelectApiKey = {
+  id: true,
+  totalCost: true,
+  paidAmount: true,
+  deliveryCost: true,
+  clientNet: true,
+  printed: true,
+  receiptNumber: true,
+  quantity: true,
+  weight: true,
+  recipientName: true,
+  recipientPhones: true,
+  recipientAddress: true,
+  clientNotes: true,
+  details: true,
+  status: true,
+  secondaryStatus: true,
+  confirmed: true,
+  deliveryType: true,
+  deliveryDate: true,
+  createdAt: true,
+  updatedAt: true,
+  governorate: true,
+  location: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  store: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  clientReport: {
+    where: {
+      report: {
+        deleted: false,
+      },
+    },
+    select: {
+      id: true,
+      secondaryType: true,
+      clientId: true,
+      storeId: true,
+      report: {
+        select: {
+          url: true,
+          deleted: true,
+        },
+      },
+    },
+  },
+  deleted: true,
+  deletedAt: true,
   deletedBy: {
     select: {
       id: true,
@@ -374,35 +445,69 @@ export const orderReform = (
         clientId: report?.clientId,
         storeId: report?.storeId,
         deleted: report?.report.deleted,
+        url: report.report.url,
       })),
     repositoryReport: order.repositoryReport.map((report) => ({
       id: report?.id,
       secondaryType: report?.secondaryType,
       repositoryId: report?.repositoryId,
       deleted: report.report.deleted,
+      url: report.report.url,
     })),
     branchReport: order.branchReport.map((report) => ({
       id: report?.id,
       branchId: report?.branchId,
       type: report.type,
       deleted: report.report.deleted,
+      url: report.report.url,
     })),
     deliveryAgentReport: order.deliveryAgentReport && {
       id: order.deliveryAgentReport?.id,
       deliveryAgentId: order.deliveryAgentReport?.deliveryAgentId,
       deleted: order.deliveryAgentReport?.report.deleted,
+      url: order.deliveryAgentReport?.report.url,
     },
     governorateReport: order.governorateReport && {
       id: order.governorateReport?.id,
       governorate: order.governorateReport?.governorate,
       deleted: order.governorateReport?.report.deleted,
+      url: order.governorateReport?.report.url,
     },
     companyReport: order.companyReport.map((report) => ({
       id: report?.id,
       secondaryType: report?.secondaryType,
       companyId: report?.companyId,
       deleted: report.report.deleted,
+      url: report.report.url,
     })),
+  };
+  return orderReformed;
+};
+
+export const orderReformApiKey = (
+  order: Prisma.OrderGetPayload<{
+    select: typeof orderSelectApiKey;
+  }> | null
+) => {
+  if (!order) {
+    return null;
+  }
+
+  const orderReformed = {
+    ...order,
+    deleted: order.deleted,
+    deletedBy: order.deleted && order.deletedBy,
+    deletedAt: order.deletedAt?.toISOString(),
+    clientReport:
+      order.clientReport &&
+      order.clientReport.map((report) => ({
+        id: report?.id,
+        secondaryType: report?.secondaryType,
+        clientId: report?.clientId,
+        storeId: report?.storeId,
+        deleted: report?.report.deleted,
+        url: report.report.url,
+      })),
   };
   return orderReformed;
 };
@@ -416,18 +521,28 @@ export const mobileOrderReform = (
     return null;
   }
 
-  let formedStatus = "";
-
-  formedStatus = orderStatusArabicNames[order.status];
-
-  if (order.secondaryStatus) {
-    formedStatus +=
-      " - " + orderSecondaryStatusArabicNames[order.secondaryStatus];
-  }
-
-  if (order.secondaryStatus === "IN_REPOSITORY") {
-    formedStatus += " - " + order.repository?.name;
-  }
+  let formedStatus = `${
+    order.secondaryStatus === "IN_REPOSITORY" &&
+    (order.status === "IN_GOV_REPOSITORY" ||
+      order.status === "IN_MAIN_REPOSITORY")
+      ? "في " + order.repository?.name
+      : order.secondaryStatus === "IN_REPOSITORY"
+      ? orderStatusArabicNames[order.status] +
+        " " +
+        "في " +
+        order.repository?.name
+      : order.secondaryStatus === "IN_CAR"
+      ? "مرسل إلي " + order.repository?.name
+      : order.secondaryStatus === "WITH_AGENT" &&
+        order.status !== "WITH_DELIVERY_AGENT" &&
+        order.status !== "WITH_RECEIVING_AGENT"
+      ? orderStatusArabicNames[order.status] + "-" + "مع المندوب"
+      : order.secondaryStatus === "WITH_CLIENT"
+      ? orderStatusArabicNames[order.status] + "-" + "مع العميل"
+      : order.secondaryStatus === "WITH_RECEIVING_AGENT"
+      ? orderStatusArabicNames[order.status] + "-" + "مع مندوب الاستلام"
+      : orderStatusArabicNames[order.status]
+  }`;
 
   const orderReformed = {
     ...order,
@@ -462,16 +577,19 @@ export const mobileOrderReform = (
       branchId: report?.branchId,
       type: report.type,
       deleted: report.report.deleted,
+      url: report.report.url,
     })),
     deliveryAgentReport: order.deliveryAgentReport && {
       id: order.deliveryAgentReport?.id,
       deliveryAgentId: order.deliveryAgentReport?.deliveryAgentId,
       deleted: order.deliveryAgentReport?.report.deleted,
+      url: order.deliveryAgentReport.report.url,
     },
     governorateReport: order.governorateReport && {
       id: order.governorateReport?.id,
       governorate: order.governorateReport?.governorate,
       deleted: order.governorateReport?.report.deleted,
+      url: order.governorateReport?.report.url,
     },
     companyReport: null,
   };
@@ -680,6 +798,6 @@ export const orderTimelineReform = (
     message: timeline.message,
     old: timeline.old && JSON.parse(timeline.old as string),
     new: timeline.new && JSON.parse(timeline.new as string),
-    by: timeline.by && JSON.parse(timeline.by as string),
+    by: timeline.by as string,
   };
 };

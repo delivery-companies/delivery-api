@@ -1,0 +1,90 @@
+<html lang="ar">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>فاتورة</title>
+    <link rel="stylesheet" href="../styles/receiptStyle.css" />
+  </head>
+  <body style="direction: rtl">
+    {{#each orders}}
+      <div
+        style="position: relative;width:100%;display: flex;
+            justify-content: space-between;
+            align-items: center;"
+      >
+        <img src="{{QRCode this}}" />
+        <img src="{{company.logo}}" class="logo" />
+      </div>
+      <div class="info">
+        <div class="item">
+          <span>شركة العميل</span>
+          <span>{{company.name}} - {{client.branch}}</span>
+        </div>
+        <div class="item">
+          <span class="removeTop">اسم الصفحه : {{store.name}}</span>
+          <span class="removeTop">رقم الوصل : {{receiptNumber}}</span>
+        </div>
+        <div class="item">
+          <span class="removeTop">رقم العميل :
+            {{showNumber client.showNumbers client.phone}}</span>
+          <span class="removeTop">التاريخ : {{date createdAt}}</span>
+        </div>
+      </div>
+      <div class="info">
+        <div class="item">
+          <span style="background-color:rgba(255, 255, 0, 0.26) ;">اسم الزبون</span>
+          <span>{{recipientName}}</span>
+        </div>
+      </div>
+      <div class="address">
+        <div class="item">
+          <span
+            style="background-color:rgba(255, 255, 0, 0.26) ;"
+          >العنوان</span>
+          <span>{{localizeGovernorate governorate}}
+            -
+            {{location.name}}
+            -
+            {{recipientAddress}}</span>
+        </div>
+      </div>
+      <div class="details">
+        <div class="head">
+          <span>تفاصيل الطلب</span>
+        </div>
+        <div class="item">
+          <span class="removeTop" style="width: 30%;">الكمية</span>
+          <span class="removeTop" style="width: 70%;">{{quantity}}</span>
+        </div>
+        <div class="item">
+          <span class="removeTop" style="width: 30%;">تفاصيل الطلب</span>
+          <span class="removeTop" style="width: 70%;">{{details}}</span>
+        </div>
+        <div class="item">
+          <span class="removeTop" style="width: 30%;">ملاحظات</span>
+          <span class="removeTop" style="width: 70%;">{{clientNotes}}</span>
+        </div>
+        <div class="item">
+          <span class="removeTop">المبلغ مع التوصيل</span>
+          <span class="removeTop">{{currency totalCost}}</span>
+        </div>
+      </div>
+      <div class="footer">
+        <div>
+          <span style="display: block;">ملاحظات مهمة : </span>
+          <span style="display: block;">* الشركة مسؤوله عن توصيل الطلبات فقط</span>
+        </div>
+        <div style="margin-top: 10px;">
+          <img src="{{QRCode this}}" />
+          <span
+            style="display: block;text-align:center;font-weight:bold"
+          >{{receiptNumber}}</span>
+        </div>
+      </div>
+      {{#unless @last}}
+        <div style="page-break-before: always;"></div>
+      {{/unless}}
+      <!-- Forces a new page -->
+    {{/each}}
+  </body>
+</html>

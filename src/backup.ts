@@ -52,10 +52,6 @@ async function uploadToDrive(filePath: string, fileName: string) {
     fileId = res.data.files[0].id;
   }
 
-  const fileMetadata: any = {
-    name: fileName,
-  };
-
   const media = {
     mimeType: "application/sql",
     body: fs.createReadStream(filePath),

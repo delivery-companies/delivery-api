@@ -85,6 +85,11 @@ export class StoresRepository {
           select: {
             id: true,
             name: true,
+            client: {
+              select: {
+                branchId: true,
+              },
+            },
           },
         },
         {
@@ -118,6 +123,48 @@ export class StoresRepository {
     };
   }
 
+  async getAllClientStoresPaginated(filters: {
+    deleted?: string;
+    clientID?: number;
+    companyID?: number;
+    name?: string;
+  }) {
+    const where = {
+      AND: [
+        {deleted: filters.deleted === "true"},
+        {company: {id: filters.companyID}},
+        {
+          client: filters.clientID ? {id: filters.clientID} : undefined,
+        },
+        {
+          name: filters.name
+            ? {
+                contains: filters.name,
+                mode: "insensitive",
+              }
+            : undefined,
+        },
+      ],
+    } as Prisma.StoreWhereInput;
+
+    const paginatedStores = await prisma.store.findManyPaginated(
+      {
+        where: where,
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      {
+        page: 1,
+        size: 10000,
+      }
+    );
+    return {
+      stores: paginatedStores.data,
+      pagesCount: paginatedStores.pagesCount,
+    };
+  }
   async getStore(data: {storeID: number}) {
     const store = await prisma.store.findUnique({
       where: {

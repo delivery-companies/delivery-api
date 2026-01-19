@@ -1,0 +1,109 @@
+<html lang="ar" dir="rtl">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>كشف عميل</title>
+  </head>
+
+  <body class="px-20">
+    <header>
+      <table>
+        <tr>
+          <td style="width: 25%">رقم الكشف: <span>{{reportData.id}}</span></td>
+          <td
+            style="width: 25%"
+            class="title
+              {{colorizeTitle reportData.ReturnedClientReport.secondaryType}}"
+          >كشف عميل</td>
+          <td style="width: 25%">عدد الطلبيات:
+            <span>{{add
+                reportData.baghdadOrdersCount
+                reportData.governoratesOrdersCount
+              }}</span></td>
+          <td style="width: 25%" rowspan="3"><img
+              src="{{reportData.company.logo}}"
+            /></td>
+        </tr>
+        <tr>
+          <td style="width: 25%">التاريخ:
+            <span>{{date reportData.createdAt}}</span></td>
+          <td style="width: 25%">العميل:
+            <span>{{reportData.ReturnedClientReport.client.name}}</span></td>
+          <td style="width: 25%">عدد طلبيات بغداد:
+            <span>{{reportData.baghdadOrdersCount}}</span></td>
+          <td style="width: 25%"></td>
+        </tr>
+        <tr>
+          <td style="width: 25%">صافي العميل:
+            <span>{{currency reportData.clientNet}}</span></td>
+          <td style="width: 25%">الصفحة:
+            <span>{{reportData.ReturnedClientReport.store.name}}</span></td>
+          <td style="width: 25%">عدد طلبيات المحافظات:
+            <span>{{reportData.governoratesOrdersCount}}</span></td>
+          <td style="width: 25%"></td>
+        </tr>
+      </table>
+    </header>
+    <main>
+      <table>
+        <thead>
+          <tr
+            class="{{colorizeHeader
+                reportData.ReturnedClientReport.secondaryType
+              }}"
+          >
+            <th>#</th>
+            <th>رقم الوصل</th>
+            <th>أنشئ في</th>
+            <th>هاتف المستلم</th>
+            <th>عنوان المستلم</th>
+            <th>مبلغ الوصل</th>
+            <th>المبلغ المستلم</th>
+            <th>مبلغ التوصيل</th>
+            <th>صافي العميل</th>
+            <th>الحالة</th>
+            <th>الملاحظات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each orders}}
+            <tr>
+              <td class="nowrap">{{inc @index}}</td>
+              <td>{{receiptNumber}}</td>
+              <td>{{date createdAt}}</td>
+              <td>{{mapPhones recipientPhones}}</td>
+              <td>{{localizeGovernorate governorate}}
+                -
+                {{location.name}}
+                -
+                {{recipientAddress}}</td>
+              <td>{{currency totalCost}}</td>
+              <td>{{currency paidAmount}}</td>
+              <td>{{currency deliveryCost}}</td>
+              <td>{{currency clientNet}}</td>
+              {{!-- <td class="{{colorizeRow2 ../reportData.ReturnedClientReport.secondaryType status}}">{{localizeOrderStatus status}}</td> --}}
+              <td class="{{colorizeRow2 status}}">{{localizeOrderStatus
+                  status
+                }}</td>
+              <td>{{notes}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+
+        <tfoot style="display: table-footer-group;">
+          <tr>
+            <td colspan="5">المجموع</td>
+            <td>{{currency reportData.totalCost}}</td>
+            <td>{{currency reportData.paidAmount}}</td>
+            <td>{{currency reportData.deliveryCost}}</td>
+            <td>{{currency reportData.clientNet}}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </main>
+    <section class="watermark">{{reportData.company.name}}</section>
+  </body>
+
+</html>

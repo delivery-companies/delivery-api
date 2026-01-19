@@ -19,163 +19,188 @@ export class CustomerOutputController {
 
     const {orderId, companyId, type, repository, storeId} = req.body;
 
-    let order = await prisma.order.findFirst({
+    const checkOrders = await prisma.order.findMany({
       where: {
-        receiptNumber: orderId,
+        OR: [
+          {
+            receiptNumber: orderId,
+          },
+          {
+            id: orderId,
+          },
+        ],
+        status: {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]},
+        companyId: loggedInUser.companyID!!,
+        confirmed: true,
+        deleted: false,
       },
       select: orderSelect,
     });
 
-    if (!order) {
+    if (checkOrders.length === 0) {
       throw new AppError("الطلب غير موجود", 404);
     }
 
-    if (order.secondaryStatus !== "IN_REPOSITORY") {
-      throw new AppError("قم بإدخال الطلب للمخزن اولا!", 404);
-    }
+    if (checkOrders.length > 1) {
+      res.status(200).json({
+        multi: true,
+        data: checkOrders.map((order) => orderReform(order)),
+      });
+    } else {
+      let order = checkOrders[0];
 
-    if (type === "company" && +companyId !== +order.company.id) {
-      throw new AppError("هذا الطلب غير تابع لهذه الشركه", 404);
-    }
+      if (!order) {
+        throw new AppError("الطلب غير موجود", 404);
+      }
 
-    if (type === "client" && +storeId !== +order.store.id) {
-      throw new AppError("هذا الطلب غير تابع لهذا المتجر", 404);
-    }
+      const store = await prisma.store.findUnique({
+        where: {
+          id: storeId,
+        },
+        select: {
+          clientId: true,
+        },
+      });
 
-    const store = await prisma.store.findUnique({
-      where: {
-        id: storeId,
-      },
-      select: {
-        clientId: true,
-      },
-    });
+      const checkIfExist = await prisma.customerOutput.findFirst({
+        where: {
+          orderId: order.id,
+          clientId: type === "client" ? store?.clientId : undefined,
+          targetRepositoryId: type === "repository" ? repository : undefined,
+          companyId: type === "company" ? companyId : undefined,
+        },
+        select: {
+          id: true,
+        },
+      });
+      console.log(checkIfExist?.id);
 
-    const userRepository = await prisma.employee.findUnique({
-      where: {
-        id: loggedInUser.id,
-      },
-      select: {
-        branch: {
-          select: {
-            id: true,
-            repositories: {
-              select: {
-                id: true,
-                type: true,
-                name: true,
-                mainRepository: true,
+      if (checkIfExist) {
+        throw new AppError("هذا الطلب موجود بالفعل!", 404);
+      }
+
+      if (order.secondaryStatus !== "IN_REPOSITORY") {
+        throw new AppError("قم بإدخال الطلب للمخزن اولا!", 404);
+      }
+
+      if (type === "company" && +companyId !== +order.company.id) {
+        throw new AppError("هذا الطلب غير تابع لهذه الشركه", 404);
+      }
+
+      if (type === "client" && +storeId !== +order.store.id) {
+        throw new AppError("هذا الطلب غير تابع لهذا المتجر", 404);
+      }
+
+      const userRepository = await prisma.employee.findUnique({
+        where: {
+          id: loggedInUser.id,
+        },
+        select: {
+          branch: {
+            select: {
+              id: true,
+              repositories: {
+                select: {
+                  id: true,
+                  type: true,
+                  name: true,
+                  mainRepository: true,
+                },
               },
             },
           },
         },
-      },
-    });
-
-    const returnsRepo = userRepository?.branch?.repositories.find(
-      (repo) => repo.type === "RETURN"
-    );
-
-    if (!returnsRepo) {
-      throw new AppError("لا يوجد مخزن راوجع لهذا الفرع!", 404);
-    }
-
-    if (type === "repository") {
-      const targetRepository = await prisma.repository.findUnique({
-        where: {
-          id: +repository,
-        },
-        select: {
-          branchId: true,
-          mainRepository: true,
-        },
       });
-      if (
-        !targetRepository?.mainRepository &&
-        targetRepository?.branchId !== order.client.branchId
-      ) {
-        throw new AppError("هذا العميل غير تابع لهذا الفرع!", 404);
+
+      const returnsRepo = userRepository?.branch?.repositories.find(
+        (repo) => repo.type === "RETURN"
+      );
+
+      if (!returnsRepo) {
+        throw new AppError("لا يوجد مخزن راوجع لهذا الفرع!", 404);
       }
-    }
 
-    const checkIfExist = await prisma.customerOutput.findFirst({
-      where: {
-        orderId: order.id,
-        clientId: type === "client" ? store?.clientId : undefined,
-        targetRepositoryId: type === "repository" ? repository : undefined,
-        companyId: type === "company" ? companyId : undefined,
-      },
-      select: {
-        id: true,
-      },
-    });
+      if (type === "repository") {
+        const targetRepository = await prisma.repository.findUnique({
+          where: {
+            id: +repository,
+          },
+          select: {
+            branchId: true,
+            mainRepository: true,
+          },
+        });
+        if (
+          !targetRepository?.mainRepository &&
+          targetRepository?.branchId !== order.client.branchId
+        ) {
+          throw new AppError("هذا العميل غير تابع لهذا الفرع!", 404);
+        }
+      }
 
-    if (checkIfExist) {
-      throw new AppError("هذا الطلب موجود بالفعل!", 404);
-    }
+      if (type === "repository") {
+        const newOrder = await prisma.order.update({
+          where: {
+            id: order.id,
+          },
+          data: {
+            secondaryStatus: "IN_CAR",
+            repositoryId: +repository,
+            forwardedRepo: returnsRepo.id,
+          },
+          select: orderSelect,
+        });
 
-    if (type === "repository") {
-      const newOrder = await prisma.order.update({
-        where: {
-          id: order.id,
-        },
+        await ordersRepository.updateOrderTimeline({
+          orderID: order.id,
+          data: {
+            type: "REPOSITORY_CHANGE",
+            date: newOrder.updatedAt,
+            old: order.repository && {
+              id: order.repository.id,
+              name: order.repository.name,
+            },
+            new: newOrder.repository && {
+              id: newOrder.repository.id,
+              name: newOrder.repository.name,
+            },
+            by: {
+              id: loggedInUser.id,
+              name: loggedInUser.name,
+            },
+            message: `تم ارسال الطلب الي مخزن ${repository}`,
+          },
+        });
+      }
+
+      if (type === "company") {
+        await prisma.order.updateMany({
+          where: {
+            id: order.id,
+          },
+          data: {
+            secondaryStatus: "WITH_AGENT",
+            repositoryId: null,
+            forwardedRepo: returnsRepo.id,
+          },
+        });
+      }
+
+      await prisma.customerOutput.create({
         data: {
-          secondaryStatus: "IN_CAR",
-          repositoryId: +repository,
-          forwardedRepo: returnsRepo.id,
+          orderId: order.id,
+          clientId: store ? store.clientId : null,
+          storeId: storeId ? storeId : null,
+          companyId: companyId ? companyId : null,
+          repositoryId: returnsRepo.id,
+          targetRepositoryId: repository ? repository : null,
         },
-        select: orderSelect,
       });
 
-      await ordersRepository.updateOrderTimeline({
-        orderID: order.id,
-        data: {
-          type: "REPOSITORY_CHANGE",
-          date: newOrder.updatedAt,
-          old: order.repository && {
-            id: order.repository.id,
-            name: order.repository.name,
-          },
-          new: newOrder.repository && {
-            id: newOrder.repository.id,
-            name: newOrder.repository.name,
-          },
-          by: {
-            id: loggedInUser.id,
-            name: loggedInUser.name,
-          },
-          message: `تم ارسال الطلب الي مخزن ${repository}`,
-        },
+      res.status(200).json({
+        status: "success",
       });
     }
-
-    if (type === "company") {
-      await prisma.order.updateMany({
-        where: {
-          id: order.id,
-        },
-        data: {
-          secondaryStatus: "WITH_AGENT",
-          repositoryId: null,
-          forwardedRepo: returnsRepo.id,
-        },
-      });
-    }
-
-    await prisma.customerOutput.create({
-      data: {
-        orderId: order.id,
-        clientId: store ? store.clientId : null,
-        storeId: storeId ? storeId : null,
-        companyId: companyId ? companyId : null,
-        repositoryId: returnsRepo.id,
-        targetRepositoryId: repository ? repository : null,
-      },
-    });
-
-    res.status(200).json({
-      status: "success",
-    });
   });
 
   getCustomerOldData = catchAsync(async (req, res) => {
@@ -260,6 +285,7 @@ export class CustomerOutputController {
       repositoryId,
       repositoryName,
       receivingAgentId,
+      orderIds,
     } = req.body;
 
     let ordersIDs: string[] = [];
@@ -308,6 +334,7 @@ export class CustomerOutputController {
       {
         where: {
           AND: [
+            {orderId: orderIds ? {in: orderIds} : undefined},
             {repositoryId: returnsRepo.id},
             type === "client" ? {storeId: storeId ? +storeId : null} : {},
             type === "client"
@@ -455,6 +482,7 @@ export class CustomerOutputController {
     await prisma.customerOutput.deleteMany({
       where: {
         AND: [
+          {orderId: orderIds ? {in: orderIds} : undefined},
           {repositoryId: returnsRepo.id},
           type === "client" ? {storeId: storeId ? +storeId : null} : {},
           type === "client"

@@ -1,6 +1,6 @@
-import { prisma } from "../../database/db";
-import type { UserSigninType } from "./auth.dto";
-import { userReform, userSelect } from "./auth.responses";
+import {prisma} from "../../database/db";
+import type {UserSigninType} from "./auth.dto";
+import {userReform, userSelect} from "./auth.responses";
 
 export class AuthRepository {
   async signin(user: UserSigninType) {

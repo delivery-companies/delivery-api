@@ -12,18 +12,18 @@ export const generateReceipts = async (
   try {
     const templatePath = path.join(
       __dirname,
-      "../../../../static/templates/clientReceipt2.hbs"
+      "../../../static/templates/clientReceipt.hbs"
     );
 
-    const css = await fs.readFile(
-      path.join(__dirname, "../../../../static/styles/receiptStyle.css"),
-      "utf8"
-    );
+    // const css = await fs.readFile(
+    //   path.join(__dirname, "../../../../static/styles/receiptStyle.css"),
+    //   "utf8"
+    // );
     const template = await fs.readFile(templatePath, "utf8");
 
     const html = await generateHTML(template, {receipts});
 
-    const pdf = await generatePDF(html, css, {landscape: false});
+    const pdf = await generatePDF(html, "", {landscape: false});
 
     return pdf;
   } catch (error) {

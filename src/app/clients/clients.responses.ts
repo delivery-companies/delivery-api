@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type {Prisma} from "@prisma/client";
 
 export const clientSelect = {
   user: {
@@ -14,6 +14,7 @@ export const clientSelect = {
   showNumbers: true,
   showDeliveryNumber: true,
   governoratesDeliveryCosts: true,
+  isExternal: true,
   createdBy: {
     select: {
       id: true,
@@ -68,6 +69,7 @@ export const clientReform = (
     role: client.role,
     showNumbers: client.showNumbers,
     showDeliveryNumber: client.showDeliveryNumber,
+    isExternal: client.isExternal,
     company: client.company,
     repository: client.repository,
     branch: client.branch,

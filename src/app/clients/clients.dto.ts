@@ -1,7 +1,7 @@
 // // import { generateMock } from "@anatine/zod-mock";
-import { generateSchema } from "@anatine/zod-openapi";
-import { ClientRole, Governorate } from "@prisma/client";
-import { z } from "zod";
+import {generateSchema} from "@anatine/zod-openapi";
+import {ClientRole, Governorate} from "@prisma/client";
+import {z} from "zod";
 
 export const ClientCreateSchema = z.object({
   name: z.string().min(3),
@@ -15,6 +15,11 @@ export const ClientCreateSchema = z.object({
     return val;
   }, z.boolean().optional()),
   showDeliveryNumber: z.preprocess((val) => {
+    if (val === "true") return true;
+    if (val === "false") return false;
+    return val;
+  }, z.boolean().optional()),
+  isExternal: z.preprocess((val) => {
     if (val === "true") return true;
     if (val === "false") return false;
     return val;

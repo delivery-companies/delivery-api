@@ -1,20 +1,20 @@
-import { Router } from "express";
+import {Router} from "express";
 
-import { AdminRole, ClientRole, EmployeeRole } from "@prisma/client";
-import { isAutherized } from "../../middlewares/isAutherized";
+import {ClientRole, EmployeeRole} from "@prisma/client";
+import {isAutherized} from "../../middlewares/isAutherized";
 // import { Role } from "@prisma/client";
 // import { isAutherized } from "../../middlewares/isAutherized.middleware";
-import { isLoggedIn } from "../../middlewares/isLoggedIn";
-import { CategoriesController } from "./categories.controller";
+import {isLoggedIn} from "../../middlewares/isLoggedIn";
+import {CategoriesController} from "./categories.controller";
 
 const router = Router();
 const categoriesController = new CategoriesController();
 
 router.route("/categories").post(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    categoriesController.createCategory
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  categoriesController.createCategory
+  /*
         #swagger.tags = ['Categories Routes']
 
         #swagger.requestBody = {
@@ -32,15 +32,16 @@ router.route("/categories").post(
 );
 
 router.route("/categories").get(
-    isLoggedIn,
-    isAutherized([
-        EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT,
-        //TODO: Remove later
-        ...Object.values(EmployeeRole),
-        ...Object.values(ClientRole)
-    ]),
-    categoriesController.getAllCategories
-    /*
+  isLoggedIn,
+  isAutherized([
+    EmployeeRole.CLIENT_ASSISTANT,
+    ClientRole.CLIENT,
+    //TODO: Remove later
+    ...Object.values(EmployeeRole),
+    ...Object.values(ClientRole),
+  ]),
+  categoriesController.getAllCategories
+  /*
         #swagger.tags = ['Categories Routes']
 
         #swagger.parameters['page'] = {
@@ -58,19 +59,19 @@ router.route("/categories").get(
 );
 
 router.route("/categories/:categoryID").get(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    categoriesController.getCategory
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  categoriesController.getCategory
+  /*
         #swagger.tags = ['Categories Routes']
     */
 );
 
 router.route("/categories/:categoryID").patch(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    categoriesController.updateCategory
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  categoriesController.updateCategory
+  /*
         #swagger.tags = ['Categories Routes']
 
         #swagger.requestBody = {
@@ -88,10 +89,10 @@ router.route("/categories/:categoryID").patch(
 );
 
 router.route("/categories/:categoryID").delete(
-    isLoggedIn,
-    isAutherized([EmployeeRole.CLIENT_ASSISTANT,ClientRole.CLIENT]),
-    categoriesController.deleteCategory
-    /*
+  isLoggedIn,
+  isAutherized([EmployeeRole.CLIENT_ASSISTANT, ClientRole.CLIENT]),
+  categoriesController.deleteCategory
+  /*
         #swagger.tags = ['Categories Routes']
     */
 );
