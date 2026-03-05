@@ -1,62 +1,66 @@
-import {Governorate, OrderStatus, type Prisma} from "@prisma/client";
+import { Governorate, OrderStatus, type Prisma } from "@prisma/client";
 
 export const OrderStatusData = {
   REGISTERED: {
     name: "مسجل",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/registered.png",
+    icon: "registered.png",
   },
   READY_TO_SEND: {
     name: "جاهز للشحن",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/ready.png",
+    icon: "ready.png",
   },
   WITH_RECEIVING_AGENT: {
     name: "مع مندوب الاستلام",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/receiving.png",
+    icon: "receiving.png",
   },
   WITH_DELIVERY_AGENT: {
     name: "بالطريق مع المندوب",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/delivery.png",
+    icon: "delivery.png",
   },
   DELIVERED: {
     name: "تم التوصيل",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/delivered.png",
+    icon: "delivered.png",
   },
   POSTPONED: {
     name: "مؤجل",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/delay.png",
+    icon: "delay.png",
   },
   RESEND: {
     name: "اعاده إرسال",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/resend.png",
+    icon: "resend.png",
   },
   PROCESSING: {
     name: "قيد المعالجه",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/recovery.png",
+    icon: "recovery.png",
   },
   PARTIALLY_RETURNED: {
-    name: "راجع حزئي",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/partially.png",
+    name: "راجع جزئي",
+    icon: "partially.png",
   },
   REPLACED: {
     name: "استبدال",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/replaced.png",
+    icon: "replaced.png",
   },
   CHANGE_ADDRESS: {
     name: "تغيير عنوان",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/changeAddress.png",
+    icon: "changeAddress.png",
   },
   RETURNED: {
     name: "راجع كلي",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/returned.png",
+    icon: "returned.png",
   },
   IN_MAIN_REPOSITORY: {
     name: "في المخزن الرئيسي",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/inRepo.png",
+    icon: "inRepo.png",
   },
   IN_GOV_REPOSITORY: {
     name: "في مخزن الفرع",
-    icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/inRepo.png",
+    icon: "inRepo.png",
   },
+};
+
+const getStatusIcon = (companyId: number, icon: string) => {
+  return `https://albarq-bucket.fra1.digitaloceanspaces.com/icons/${companyId}/${icon}`;
 };
 
 export const orderSecondaryStatusArabicNames = {
@@ -392,7 +396,7 @@ export const orderSelectApiKey = {
 export const orderReform = (
   order: Prisma.OrderGetPayload<{
     select: typeof orderSelect;
-  }> | null
+  }> | null,
 ) => {
   if (!order) {
     return null;
@@ -487,7 +491,7 @@ export const orderReform = (
 export const orderReformApiKey = (
   order: Prisma.OrderGetPayload<{
     select: typeof orderSelectApiKey;
-  }> | null
+  }> | null,
 ) => {
   if (!order) {
     return null;
@@ -515,7 +519,7 @@ export const orderReformApiKey = (
 export const mobileOrderReform = (
   order: Prisma.OrderGetPayload<{
     select: typeof orderSelect;
-  }> | null
+  }> | null,
 ) => {
   if (!order) {
     return null;
@@ -527,21 +531,23 @@ export const mobileOrderReform = (
       order.status === "IN_MAIN_REPOSITORY")
       ? "في " + order.repository?.name
       : order.secondaryStatus === "IN_REPOSITORY"
-      ? orderStatusArabicNames[order.status] +
-        " " +
-        "في " +
-        order.repository?.name
-      : order.secondaryStatus === "IN_CAR"
-      ? "مرسل إلي " + order.repository?.name
-      : order.secondaryStatus === "WITH_AGENT" &&
-        order.status !== "WITH_DELIVERY_AGENT" &&
-        order.status !== "WITH_RECEIVING_AGENT"
-      ? orderStatusArabicNames[order.status] + "-" + "مع المندوب"
-      : order.secondaryStatus === "WITH_CLIENT"
-      ? orderStatusArabicNames[order.status] + "-" + "مع العميل"
-      : order.secondaryStatus === "WITH_RECEIVING_AGENT"
-      ? orderStatusArabicNames[order.status] + "-" + "مع مندوب الاستلام"
-      : orderStatusArabicNames[order.status]
+        ? orderStatusArabicNames[order.status] +
+          " " +
+          "في " +
+          order.repository?.name
+        : order.secondaryStatus === "IN_CAR"
+          ? "مرسل إلي " + order.repository?.name
+          : order.secondaryStatus === "WITH_AGENT" &&
+              order.status !== "WITH_DELIVERY_AGENT" &&
+              order.status !== "WITH_RECEIVING_AGENT"
+            ? orderStatusArabicNames[order.status] + "-" + "مع المندوب"
+            : order.secondaryStatus === "WITH_CLIENT"
+              ? orderStatusArabicNames[order.status] + "-" + "مع العميل"
+              : order.secondaryStatus === "WITH_RECEIVING_AGENT"
+                ? orderStatusArabicNames[order.status] +
+                  "-" +
+                  "مع مندوب الاستلام"
+                : orderStatusArabicNames[order.status]
   }`;
 
   const orderReformed = {
@@ -597,83 +603,86 @@ export const mobileOrderReform = (
 };
 /* --------------------------------------------------------------- */
 
-export const statisticsReformed = (statistics: {
-  ordersStatisticsByStatus: (Prisma.PickEnumerable<
-    Prisma.OrderGroupByOutputType,
-    "status"[]
-  > & {
-    _count: {
-      id: number;
-    };
-    _sum: {
-      totalCost: number | null;
-    };
-  })[];
+export const statisticsReformed = (
+  companyId: number,
+  statistics: {
+    ordersStatisticsByStatus: (Prisma.PickEnumerable<
+      Prisma.OrderGroupByOutputType,
+      "status"[]
+    > & {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        totalCost: number | null;
+      };
+    })[];
 
-  ordersStatisticsByGovernorate: (Prisma.PickEnumerable<
-    Prisma.OrderGroupByOutputType,
-    "governorate"[]
-  > & {
-    _count: {
-      id: number;
-    };
-    _sum: {
-      totalCost: number | null;
-    };
-  })[];
+    ordersStatisticsByGovernorate: (Prisma.PickEnumerable<
+      Prisma.OrderGroupByOutputType,
+      "governorate"[]
+    > & {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        totalCost: number | null;
+      };
+    })[];
 
-  allOrdersStatistics: {
-    _count: {
-      id: number;
+    allOrdersStatistics: {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        totalCost: number | null;
+      };
     };
-    _sum: {
-      totalCost: number | null;
-    };
-  };
 
-  allOrdersStatisticsWithoutClientReport: {
-    _count: {
-      id: number;
+    allOrdersStatisticsWithoutClientReport: {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        paidAmount: number | null;
+        deliveryCost: number | null;
+      };
     };
-    _sum: {
-      paidAmount: number | null;
-      deliveryCost: number | null;
+    allOrdersStatisticsWithoutDeliveryReport: {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        paidAmount: number | null;
+        deliveryAgentNet: number | null;
+      };
     };
-  };
-  allOrdersStatisticsWithoutDeliveryReport: {
-    _count: {
-      id: number;
+    allOrdersStatisticsWithoutBranchReport: {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        paidAmount: number | null;
+      };
     };
-    _sum: {
-      paidAmount: number | null;
-      deliveryAgentNet: number | null;
+    allOrdersStatisticsWithoutCompanyReport: {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        paidAmount: number | null;
+      };
     };
-  };
-  allOrdersStatisticsWithoutBranchReport: {
-    _count: {
-      id: number;
+    todayOrdersStatistics: {
+      _count: {
+        id: number;
+      };
+      _sum: {
+        totalCost: number | null;
+      };
     };
-    _sum: {
-      paidAmount: number | null;
-    };
-  };
-  allOrdersStatisticsWithoutCompanyReport: {
-    _count: {
-      id: number;
-    };
-    _sum: {
-      paidAmount: number | null;
-    };
-  };
-  todayOrdersStatistics: {
-    _count: {
-      id: number;
-    };
-    _sum: {
-      totalCost: number | null;
-    };
-  };
-}) => {
+  },
+) => {
   const sortingOrder = [
     "REGISTERED",
     "READY_TO_SEND",
@@ -697,16 +706,16 @@ export const statisticsReformed = (statistics: {
     )
       .map((status) => {
         const statusCount = statistics.ordersStatisticsByStatus.find(
-          (orderStatus: {status: string}) => {
+          (orderStatus: { status: string }) => {
             return orderStatus.status === status;
-          }
+          },
         );
         return {
           status: status,
           totalCost: statusCount?._sum.totalCost || 0,
           count: statusCount?._count.id || 0,
           name: OrderStatusData[status].name,
-          icon: OrderStatusData[status].icon,
+          icon: getStatusIcon(companyId, OrderStatusData[status].icon),
           inside: false,
         };
       })
@@ -718,9 +727,9 @@ export const statisticsReformed = (statistics: {
       Object.keys(Governorate) as Array<keyof typeof Governorate>
     ).map((governorate) => {
       const governorateCount = statistics.ordersStatisticsByGovernorate.find(
-        (orderStatus: {governorate: string}) => {
+        (orderStatus: { governorate: string }) => {
           return orderStatus.governorate === governorate;
-        }
+        },
       );
       return {
         governorate: governorate,
@@ -789,7 +798,7 @@ export const orderTimelineSelect = {
 export const orderTimelineReform = (
   timeline: Prisma.OrderTimelineGetPayload<{
     select: typeof orderTimelineSelect;
-  }>
+  }>,
 ) => {
   return {
     id: timeline.id,

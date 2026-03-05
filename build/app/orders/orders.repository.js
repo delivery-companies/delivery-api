@@ -1516,7 +1516,9 @@ class OrdersRepository {
                                         },
                                     },
                                     {
-                                        deliveryAgentReport: { report: { deleted: true } },
+                                        deliveryAgentReport: {
+                                            report: { deleted: true },
+                                        },
                                         status: {
                                             notIn: ["RETURNED"],
                                         },
@@ -1655,7 +1657,11 @@ class OrdersRepository {
                                     {
                                         secondaryStatus: "WITH_AGENT",
                                         status: {
-                                            in: ["RETURNED", "REPLACED", "PARTIALLY_RETURNED"],
+                                            in: [
+                                                "RETURNED",
+                                                "REPLACED",
+                                                "PARTIALLY_RETURNED",
+                                            ],
                                         },
                                     },
                                 ]
@@ -3200,7 +3206,7 @@ class OrdersRepository {
                     : undefined,
             },
         });
-        return (0, orders_responses_1.statisticsReformed)({
+        return (0, orders_responses_1.statisticsReformed)(data.loggedInUser.companyID, {
             ordersStatisticsByStatus,
             ordersStatisticsByGovernorate,
             allOrdersStatistics,
@@ -3217,7 +3223,9 @@ class OrdersRepository {
                 order: {
                     id: data.params.orderID,
                 },
-                type: data.filters.types ? { in: data.filters.types } : data.filters.type,
+                type: data.filters.types
+                    ? { in: data.filters.types }
+                    : data.filters.type,
             },
             select: orders_responses_1.orderTimelineSelect,
             orderBy: {
