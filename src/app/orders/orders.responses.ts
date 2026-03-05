@@ -59,7 +59,7 @@ export const OrderStatusData = {
   },
 };
 
-const getStatusIcon = (companyId: number, icon: string) => {
+export const getStatusIcon = (companyId: number, icon: string) => {
   return `https://albarq-bucket.fra1.digitaloceanspaces.com/icons/${companyId}/${icon}`;
 };
 

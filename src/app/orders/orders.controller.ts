@@ -1,6 +1,6 @@
-import {prisma} from "../../database/db";
-import {catchAsync} from "../../lib/catchAsync";
-import type {loggedInUserType} from "../../types/user";
+import { prisma } from "../../database/db";
+import { catchAsync } from "../../lib/catchAsync";
+import type { loggedInUserType } from "../../types/user";
 import {
   OrderChatNotificationCreateSchema,
   OrderCreateSchema,
@@ -13,20 +13,25 @@ import {
   OrdersReportPDFCreateSchema,
   OrdersStatisticsFiltersSchema,
 } from "./orders.dto";
-import {OrdersService} from "./orders.service";
-import {EmployeesRepository} from "../employees/employees.repository";
+import { OrdersService } from "./orders.service";
+import { EmployeesRepository } from "../employees/employees.repository";
 import {
   Governorate,
   OrderStatus,
   Prisma,
   SecondaryStatus,
 } from "@prisma/client";
-import {orderReform, orderSelect, OrderStatusData} from "./orders.responses";
-import {AppError} from "../../lib/AppError";
-import {OrdersRepository} from "./orders.repository";
-import {generateReceipts} from "./helpers/generateReceipts";
-import {governorateArabicNames} from "../locations/locations.repository";
-import {generateOrdersReport} from "./helpers/generateOrdersReport";
+import {
+  getStatusIcon,
+  orderReform,
+  orderSelect,
+  OrderStatusData,
+} from "./orders.responses";
+import { AppError } from "../../lib/AppError";
+import { OrdersRepository } from "./orders.repository";
+import { generateReceipts } from "./helpers/generateReceipts";
+import { governorateArabicNames } from "../locations/locations.repository";
+import { generateOrdersReport } from "./helpers/generateOrdersReport";
 import fs from "fs";
 import path from "path";
 import csv from "csv-parser";
@@ -117,7 +122,7 @@ export class OrdersController {
       createdBy: req.query.created_by,
     });
 
-    const {orders, ordersMetaData, page, pagesCount} =
+    const { orders, ordersMetaData, page, pagesCount } =
       await ordersService.getAllOrders({
         loggedInUser: loggedInUser,
         filters: filters,
@@ -164,7 +169,7 @@ export class OrdersController {
       printed: req.query.printed,
     });
 
-    const {orders, ordersMetaData, page, pagesCount} =
+    const { orders, ordersMetaData, page, pagesCount } =
       await ordersService.getAllOrdersApiKey({
         loggedInUser: loggedInUser,
         filters: filters,
@@ -221,10 +226,10 @@ export class OrdersController {
     });
 
     const exportRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "EXPORT"
+      (repo) => repo.type === "EXPORT",
     );
     const returnRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "RETURN"
+      (repo) => repo.type === "RETURN",
     );
 
     if (!user) {
@@ -263,18 +268,18 @@ export class OrdersController {
             getOutComing && to_repository_id
               ? Number(to_repository_id)
               : getOutComing
-              ? undefined
-              : repository_id
-              ? Number(repository_id)
-              : secondaryStatus === "IN_CAR"
-              ? undefined
-              : status === "RETURNED"
-              ? returnRepo?.id
-              : exportRepo?.id,
+                ? undefined
+                : repository_id
+                  ? Number(repository_id)
+                  : secondaryStatus === "IN_CAR"
+                    ? undefined
+                    : status === "RETURNED"
+                      ? returnRepo?.id
+                      : exportRepo?.id,
           secondaryStatus: secondaryStatus as SecondaryStatus,
           status:
             status === "RETURNED"
-              ? {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]}
+              ? { in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"] }
               : (status as OrderStatus),
           storeId: store_id ? Number(store_id) : undefined,
           clientId: client_id ? Number(client_id) : undefined,
@@ -290,17 +295,17 @@ export class OrdersController {
             secondaryStatus === "IN_REPOSITORY"
               ? undefined
               : !getIncoming && branchId
-              ? +branchId
-              : undefined,
+                ? +branchId
+                : undefined,
           forwardedRepo: getOutComing
             ? returnRepo?.id
             : getIncoming && to_repository_id
-            ? Number(to_repository_id)
-            : getIncoming
-            ? undefined
-            : secondaryStatus === "IN_CAR"
-            ? exportRepo?.id
-            : undefined,
+              ? Number(to_repository_id)
+              : getIncoming
+                ? undefined
+                : secondaryStatus === "IN_CAR"
+                  ? exportRepo?.id
+                  : undefined,
         },
         orderBy: {
           updatedAt: "desc",
@@ -310,7 +315,7 @@ export class OrdersController {
       {
         page: page ? +page : 1,
         size: size ? +size : 10,
-      }
+      },
     );
 
     const newData = results.data.map((order) => orderReform(order));
@@ -336,7 +341,7 @@ export class OrdersController {
       params: params,
     });
     const orderTimeline = await ordersService.getOrderTimeline({
-      params: {orderID: params.orderID},
+      params: { orderID: params.orderID },
       filters: {},
     });
     const orderInquiryEmployees = await ordersService.getOrderInquiryEmployees({
@@ -360,7 +365,7 @@ export class OrdersController {
       params: params,
     });
     const orderTimeline = await ordersService.getOrderTimeline({
-      params: {orderID: params.orderID},
+      params: { orderID: params.orderID },
       filters: {},
     });
     const orderInquiryEmployees = await ordersService.getOrderInquiryEmployees({
@@ -385,7 +390,7 @@ export class OrdersController {
     });
 
     const orderTimeline = await ordersService.getOrderTimeline({
-      params: {orderID: params.orderID},
+      params: { orderID: params.orderID },
       filters: {},
     });
 
@@ -543,7 +548,7 @@ export class OrdersController {
     });
 
     const exportRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "EXPORT"
+      (repo) => repo.type === "EXPORT",
     );
 
     if (!user) {
@@ -703,7 +708,7 @@ export class OrdersController {
     });
 
     const returnsRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "RETURN"
+      (repo) => repo.type === "RETURN",
     );
 
     if (!user) {
@@ -724,7 +729,7 @@ export class OrdersController {
             id: params.orderReceiptNumber,
           },
         ],
-        status: {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]},
+        status: { in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"] },
         companyId: loggedInUser.companyID!!,
         confirmed: true,
         deleted: false,
@@ -775,7 +780,7 @@ export class OrdersController {
         throw new AppError("هذا الطلب موجود في مخزن!", 400);
       }
       const returnedReport = oldOrder.repositoryReport.find(
-        (r) => r.secondaryType === "RETURNED"
+        (r) => r.secondaryType === "RETURNED",
       );
       // Remove the order from the repository report
       if (returnedReport) {
@@ -822,7 +827,7 @@ export class OrdersController {
     };
     const loggedInUser = res.locals.user as loggedInUserType;
     const orderData = OrderRepositoryConfirmByReceiptNumberSchema.parse(
-      req.body
+      req.body,
     );
 
     const order = await ordersService.repositoryConfirmOrderByReceiptNumber({
@@ -893,7 +898,7 @@ export class OrdersController {
   });
 
   getPdfs = catchAsync(async (req, res) => {
-    const {page, size} = req.query;
+    const { page, size } = req.query;
     const loggedInUser = res.locals.user as loggedInUserType;
     const pdfs = await prisma.savedPdf.findManyPaginated(
       {
@@ -915,7 +920,7 @@ export class OrdersController {
       {
         page: page ? +page : 1,
         size: size ? +size : 2000,
-      }
+      },
     );
 
     res.status(200).json({
@@ -960,7 +965,7 @@ export class OrdersController {
 
     const pdf = await ordersService.getOrdersReportPDF({
       ordersData: ordersData,
-      ordersFilters: {...filters, size: 10000},
+      ordersFilters: { ...filters, size: 10000 },
       loggedInUser: loggedInUser,
     });
 
@@ -1012,10 +1017,10 @@ export class OrdersController {
     });
 
     const exportRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "EXPORT"
+      (repo) => repo.type === "EXPORT",
     );
     const returnRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "RETURN"
+      (repo) => repo.type === "RETURN",
     );
 
     if (!user) {
@@ -1041,18 +1046,18 @@ export class OrdersController {
             getOutComing && to_repository_id
               ? Number(to_repository_id)
               : getOutComing
-              ? undefined
-              : repository_id
-              ? Number(repository_id)
-              : secondaryStatus === "IN_CAR"
-              ? undefined
-              : status === "RETURNED"
-              ? returnRepo?.id
-              : exportRepo?.id,
+                ? undefined
+                : repository_id
+                  ? Number(repository_id)
+                  : secondaryStatus === "IN_CAR"
+                    ? undefined
+                    : status === "RETURNED"
+                      ? returnRepo?.id
+                      : exportRepo?.id,
           secondaryStatus: secondaryStatus as SecondaryStatus,
           status:
             status === "RETURNED"
-              ? {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]}
+              ? { in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"] }
               : (status as OrderStatus),
           storeId: store_id ? Number(store_id) : undefined,
           clientId: client_id ? Number(client_id) : undefined,
@@ -1069,17 +1074,17 @@ export class OrdersController {
             secondaryStatus === "IN_REPOSITORY"
               ? undefined
               : !getIncoming && branchId
-              ? +branchId
-              : undefined,
+                ? +branchId
+                : undefined,
           forwardedRepo: getOutComing
             ? returnRepo?.id
             : getIncoming && to_repository_id
-            ? Number(to_repository_id)
-            : getIncoming
-            ? undefined
-            : secondaryStatus === "IN_CAR"
-            ? exportRepo?.id
-            : undefined,
+              ? Number(to_repository_id)
+              : getIncoming
+                ? undefined
+                : secondaryStatus === "IN_CAR"
+                  ? exportRepo?.id
+                  : undefined,
         },
         orderBy: {
           updatedAt: "desc",
@@ -1112,7 +1117,7 @@ export class OrdersController {
       baghdadCount: orders.filter((order) => order?.governorate === "BAGHDAD")
         .length,
       governoratesCount: orders.filter(
-        (order) => order?.governorate !== "BAGHDAD"
+        (order) => order?.governorate !== "BAGHDAD",
       ).length,
       company: orders[0]?.company,
     };
@@ -1120,7 +1125,7 @@ export class OrdersController {
     const pdf = await generateOrdersReport(
       ordersData.type,
       ordersMetaData,
-      orders
+      orders,
     );
 
     const pdfBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
@@ -1225,7 +1230,7 @@ export class OrdersController {
     });
 
     const exportRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "EXPORT"
+      (repo) => repo.type === "EXPORT",
     );
     const branchs = await prisma.branch.findMany({
       where: {
@@ -1274,7 +1279,7 @@ export class OrdersController {
             count: status._count.id,
             branchId: status.branchId,
             branchName: branchs.find(
-              (branch) => +branch.id === +status.branchId!!
+              (branch) => +branch.id === +status.branchId!!,
             )?.name,
           };
         }),
@@ -1300,7 +1305,7 @@ export class OrdersController {
             count: status._count.id,
             deliveryAgentId: status.deliveryAgentId,
             name: deliveries.find(
-              (branch) => +branch.id === +status.deliveryAgentId!!
+              (branch) => +branch.id === +status.deliveryAgentId!!,
             )?.user.name,
           };
         }),
@@ -1346,7 +1351,7 @@ export class OrdersController {
             count: status._count.id,
             branchId: status.forwardedBranchId,
             branchName: branchs.find(
-              (branch) => +branch.id === +status.forwardedBranchId!!
+              (branch) => +branch.id === +status.forwardedBranchId!!,
             )?.name,
           };
         }),
@@ -1391,10 +1396,10 @@ export class OrdersController {
     });
 
     const exportRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "EXPORT"
+      (repo) => repo.type === "EXPORT",
     );
     const returnRepo = user?.branch?.repositories.find(
-      (repo) => repo.type === "RETURN"
+      (repo) => repo.type === "RETURN",
     );
 
     if (
@@ -1414,18 +1419,18 @@ export class OrdersController {
         getOutComing && to_repository_id
           ? Number(to_repository_id)
           : getOutComing
-          ? undefined
-          : repository_id
-          ? Number(repository_id)
-          : secondaryStatus === "IN_CAR"
-          ? undefined
-          : status === "RETURNED"
-          ? returnRepo?.id
-          : exportRepo?.id,
+            ? undefined
+            : repository_id
+              ? Number(repository_id)
+              : secondaryStatus === "IN_CAR"
+                ? undefined
+                : status === "RETURNED"
+                  ? returnRepo?.id
+                  : exportRepo?.id,
       secondaryStatus: secondaryStatus as SecondaryStatus,
       status:
         status === "RETURNED"
-          ? {in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"]}
+          ? { in: ["RETURNED", "PARTIALLY_RETURNED", "REPLACED"] }
           : (status as OrderStatus),
 
       client:
@@ -1440,17 +1445,17 @@ export class OrdersController {
         secondaryStatus === "IN_REPOSITORY"
           ? undefined
           : !getIncoming && branchId
-          ? +branchId
-          : undefined,
+            ? +branchId
+            : undefined,
       forwardedRepo: getOutComing
         ? returnRepo?.id
         : getIncoming && to_repository_id
-        ? Number(to_repository_id)
-        : getIncoming
-        ? undefined
-        : secondaryStatus === "IN_CAR"
-        ? exportRepo?.id
-        : undefined,
+          ? Number(to_repository_id)
+          : getIncoming
+            ? undefined
+            : secondaryStatus === "IN_CAR"
+              ? exportRepo?.id
+              : undefined,
     } satisfies Prisma.OrderWhereInput;
 
     const repositories = await prisma.repository.findMany({
@@ -1478,7 +1483,7 @@ export class OrdersController {
             count: status._count.id,
             repositoryId: status.repositoryId,
             repoName: repositories.find(
-              (repository) => +repository.id === +status.repositoryId!!
+              (repository) => +repository.id === +status.repositoryId!!,
             )?.name,
           };
         }),
@@ -1498,7 +1503,7 @@ export class OrdersController {
             count: status._count.id,
             repositoryId: status.forwardedRepo,
             repoName: repositories.find(
-              (repository) => +repository.id === +status.forwardedRepo!!
+              (repository) => +repository.id === +status.forwardedRepo!!,
             )?.name,
           };
         }),
@@ -1545,7 +1550,7 @@ export class OrdersController {
         deleted: false,
         status:
           status === "RETURNED"
-            ? {in: ["RETURNED", "REPLACED", "PARTIALLY_RETURNED"]}
+            ? { in: ["RETURNED", "REPLACED", "PARTIALLY_RETURNED"] }
             : (status as OrderStatus),
         clientReport:
           status === "RETURNED"
@@ -1586,7 +1591,7 @@ export class OrdersController {
   getReceivingAgentStores = catchAsync(async (req, res) => {
     const loggedInUser = res.locals.user as loggedInUserType;
 
-    const {receivingAgentId, clientId, storeId} = req.query;
+    const { receivingAgentId, clientId, storeId } = req.query;
 
     let inquiryClientsIDs: number[] | undefined = undefined;
 
@@ -1608,9 +1613,9 @@ export class OrdersController {
       by: ["storeId"],
       where: {
         AND: [
-          {clientId: clientId ? +clientId : {in: inquiryClientsIDs}},
-          {storeId: storeId ? +storeId : {in: inquiryClientsIDs}},
-          {status: {in: ["DELIVERED", "PARTIALLY_RETURNED", "REPLACED"]}},
+          { clientId: clientId ? +clientId : { in: inquiryClientsIDs } },
+          { storeId: storeId ? +storeId : { in: inquiryClientsIDs } },
+          { status: { in: ["DELIVERED", "PARTIALLY_RETURNED", "REPLACED"] } },
           {
             deleted: false,
           },
@@ -1642,7 +1647,7 @@ export class OrdersController {
           },
         ],
       },
-      _count: {id: true},
+      _count: { id: true },
       _sum: {
         totalCost: true,
         paidAmount: true,
@@ -1656,7 +1661,7 @@ export class OrdersController {
     const stores = await prisma.store.findMany({
       where: {
         id: receivingAgentId
-          ? {in: aggregatedOrders.map((o) => o.storeId)}
+          ? { in: aggregatedOrders.map((o) => o.storeId) }
           : undefined,
         clientId: clientId ? +clientId : undefined,
       },
@@ -1720,7 +1725,7 @@ export class OrdersController {
         where: {
           clientId: loggedInUser.id,
           deleted: false,
-          status: {in: ["REGISTERED", "READY_TO_SEND"]},
+          status: { in: ["REGISTERED", "READY_TO_SEND"] },
         },
       });
 
@@ -1729,7 +1734,7 @@ export class OrdersController {
         status: "success",
         data: statuses.map((status) => {
           const statuscount = ordersStatisticsByStatus.find(
-            (s) => s.status === status
+            (s) => s.status === status,
           );
 
           return {
@@ -1737,7 +1742,10 @@ export class OrdersController {
             count: statuscount?._count.id || 0,
             totalCost: statuscount?._sum.totalCost || 0,
             name: OrderStatusData[status].name,
-            icon: OrderStatusData[status].icon,
+            icon: getStatusIcon(
+              loggedInUser.companyID!!,
+              OrderStatusData[status].icon,
+            ),
           };
         }),
       });
@@ -1771,7 +1779,7 @@ export class OrdersController {
         status: "success",
         data: statuses.map((status) => {
           const statuscount = ordersStatisticsByStatus.find(
-            (s) => s.status === status
+            (s) => s.status === status,
           );
 
           return {
@@ -1831,7 +1839,7 @@ export class OrdersController {
         status: "success",
         data: statuses.map((status) => {
           const statuscount = ordersStatisticsByStatus.find(
-            (s) => s.status === status
+            (s) => s.status === status,
           );
 
           return {
@@ -1961,7 +1969,7 @@ export class OrdersController {
   });
 
   generateExcelSheet = catchAsync(async (_req, res) => {
-    const loggedInUser = res.locals.user as {companyID: number};
+    const loggedInUser = res.locals.user as { companyID: number };
 
     // إنشاء ملف جديد
     const workbook = await XlsxPopulate.fromBlankAsync();
@@ -1970,17 +1978,17 @@ export class OrdersController {
 
     // جلب البيانات من DB
     const locations = await prisma.location.findMany({
-      where: {companyId: loggedInUser.companyID},
-      select: {id: true, name: true, governorateAr: true},
+      where: { companyId: loggedInUser.companyID },
+      select: { id: true, name: true, governorateAr: true },
     });
 
     // استخراج المحافظات الفريدة
     const governorates = Array.from(
-      new Set(locations.map((l) => l.governorateAr?.trim()).filter(Boolean))
+      new Set(locations.map((l) => l.governorateAr?.trim()).filter(Boolean)),
     );
 
     // تجميع المناطق حسب المحافظة
-    const grouped: {[key: string]: string[]} = {};
+    const grouped: { [key: string]: string[] } = {};
     governorates.forEach((gov) => {
       grouped[gov!!] = locations
         .filter((l) => l.governorateAr?.trim() === gov)
@@ -1993,7 +2001,7 @@ export class OrdersController {
     });
     workbook.definedName(
       "Governorates",
-      `Lists!$A$1:$A$${governorates.length}`
+      `Lists!$A$1:$A$${governorates.length}`,
     );
 
     // إضافة المناطق لكل محافظة
@@ -2011,7 +2019,7 @@ export class OrdersController {
 
       workbook.definedName(
         govSafe,
-        `Lists!$${colLetter}$1:$${colLetter}$${endRow}`
+        `Lists!$${colLetter}$1:$${colLetter}$${endRow}`,
       );
 
       col++;
@@ -2070,7 +2078,7 @@ export class OrdersController {
     const buffer = await workbook.outputAsync();
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader("Content-Disposition", "attachment; filename=template.xlsx");
     res.send(Buffer.from(buffer));
@@ -2108,7 +2116,7 @@ export class OrdersController {
         }
 
         const result = await prisma.order.updateMany({
-          where: {id: row.id},
+          where: { id: row.id },
           data: {
             status: row.status,
             secondaryStatus: cleanString(row.secondaryStatus),
@@ -2124,7 +2132,7 @@ export class OrdersController {
         } else {
           skippedIds.push(row.id);
         }
-      })
+      }),
     );
 
     res.status(200).json({

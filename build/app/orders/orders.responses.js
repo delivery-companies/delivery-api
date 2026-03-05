@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.orderTimelineReform = exports.orderTimelineSelect = exports.statisticsReformed = exports.mobileOrderReform = exports.orderReformApiKey = exports.orderReform = exports.orderSelectApiKey = exports.orderSelect = exports.orderStatusArabicNames = exports.orderSecondaryStatusArabicNames = exports.OrderStatusData = void 0;
+exports.orderTimelineReform = exports.orderTimelineSelect = exports.statisticsReformed = exports.mobileOrderReform = exports.orderReformApiKey = exports.orderReform = exports.orderSelectApiKey = exports.orderSelect = exports.orderStatusArabicNames = exports.orderSecondaryStatusArabicNames = exports.getStatusIcon = exports.OrderStatusData = void 0;
 const client_1 = require("@prisma/client");
 exports.OrderStatusData = {
     REGISTERED: {
@@ -63,6 +63,7 @@ exports.OrderStatusData = {
 const getStatusIcon = (companyId, icon) => {
     return `https://albarq-bucket.fra1.digitaloceanspaces.com/icons/${companyId}/${icon}`;
 };
+exports.getStatusIcon = getStatusIcon;
 exports.orderSecondaryStatusArabicNames = {
     WITH_CLIENT: "مع العميل",
     WITH_AGENT: "مع المندوب",
@@ -604,7 +605,7 @@ const statisticsReformed = (companyId, statistics) => {
                 totalCost: statusCount?._sum.totalCost || 0,
                 count: statusCount?._count.id || 0,
                 name: exports.OrderStatusData[status].name,
-                icon: getStatusIcon(companyId, exports.OrderStatusData[status].icon),
+                icon: (0, exports.getStatusIcon)(companyId, exports.OrderStatusData[status].icon),
                 inside: false,
             };
         })
