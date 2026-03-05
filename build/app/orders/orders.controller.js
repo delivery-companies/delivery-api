@@ -1512,7 +1512,7 @@ class OrdersController {
                         count: statuscount?._count.id || 0,
                         totalCost: statuscount?._sum.totalCost || 0,
                         name: orders_responses_1.OrderStatusData[status].name,
-                        icon: orders_responses_1.OrderStatusData[status].icon,
+                        icon: (0, orders_responses_1.getStatusIcon)(loggedInUser.companyID, orders_responses_1.OrderStatusData[status].icon),
                     };
                 }),
             });
@@ -1570,7 +1570,7 @@ class OrdersController {
                         count: statuscount?._count.id || 0,
                         totalCost: statuscount?._sum.totalCost || 0,
                         name: orders_responses_1.OrderStatusData[status].name,
-                        icon: orders_responses_1.OrderStatusData[status].icon,
+                        icon: (0, orders_responses_1.getStatusIcon)(loggedInUser.companyID, orders_responses_1.OrderStatusData[status].icon),
                     };
                 }),
             });

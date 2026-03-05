@@ -1787,7 +1787,10 @@ export class OrdersController {
             count: statuscount?._count.id || 0,
             totalCost: statuscount?._sum.totalCost || 0,
             name: OrderStatusData[status].name,
-            icon: OrderStatusData[status].icon,
+            icon: getStatusIcon(
+              loggedInUser.companyID!!,
+              OrderStatusData[status].icon,
+            ),
           };
         }),
       });
@@ -1847,7 +1850,10 @@ export class OrdersController {
             count: statuscount?._count.id || 0,
             totalCost: statuscount?._sum.totalCost || 0,
             name: OrderStatusData[status].name,
-            icon: OrderStatusData[status].icon,
+            icon: getStatusIcon(
+              loggedInUser.companyID!!,
+              OrderStatusData[status].icon,
+            ),
           };
         }),
       });
