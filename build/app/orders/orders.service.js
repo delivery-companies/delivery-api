@@ -573,7 +573,11 @@ class OrdersService {
                     const clientAssitants = await db_1.prisma.employee.findMany({
                         where: {
                             AND: [
-                                { role: { in: ["CLIENT_ASSISTANT", "EMPLOYEE_CLIENT_ASSISTANT"] } },
+                                {
+                                    role: {
+                                        in: ["CLIENT_ASSISTANT", "EMPLOYEE_CLIENT_ASSISTANT"],
+                                    },
+                                },
                                 {
                                     OR: [
                                         {
@@ -1152,7 +1156,7 @@ class OrdersService {
                         totalCost: total,
                         count: count,
                         name: "الرواجع",
-                        icon: orders_responses_1.OrderStatusData["RETURNED"].icon,
+                        icon: (0, orders_responses_1.getStatusIcon)(data.loggedInUser.companyID, orders_responses_1.OrderStatusData["RETURNED"].icon),
                     },
                 ],
             };
@@ -1235,7 +1239,7 @@ class OrdersService {
                         totalCost: 0,
                         count: inRepo,
                         name: "في المخزن",
-                        icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/delivered.png",
+                        icon: (0, orders_responses_1.getStatusIcon)(data.loggedInUser.companyID, orders_responses_1.OrderStatusData["DELIVERED"].icon),
                         inside: false,
                     },
                     {
@@ -1245,7 +1249,7 @@ class OrdersService {
                         name: data.loggedInUser.mainRepository
                             ? "المرسله إلي الافرع"
                             : "المرسله إلي الرئيسي",
-                        icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/receiving.png",
+                        icon: (0, orders_responses_1.getStatusIcon)(data.loggedInUser.companyID, orders_responses_1.OrderStatusData["WITH_RECEIVING_AGENT"].icon),
                         inside: false,
                     },
                     {
@@ -1255,7 +1259,7 @@ class OrdersService {
                         name: data.loggedInUser.mainRepository
                             ? "المرسله من الافرع"
                             : "المرسله من الرئيسي",
-                        icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/receiving.png",
+                        icon: (0, orders_responses_1.getStatusIcon)(data.loggedInUser.companyID, orders_responses_1.OrderStatusData["WITH_RECEIVING_AGENT"].icon),
                         inside: false,
                     },
                 ],
@@ -1268,7 +1272,7 @@ class OrdersService {
                 count: 0,
                 totalCost: 0,
                 name: "تم التوصيل",
-                icon: "https://albarq-bucket.fra1.digitaloceanspaces.com/icons/delivered.png",
+                icon: (0, orders_responses_1.getStatusIcon)(data.loggedInUser.companyID, orders_responses_1.OrderStatusData["DELIVERED"].icon),
                 inside: true,
             };
             const pReturedOrders = newStatusStatistics.find((status) => status.status === "PARTIALLY_RETURNED");
@@ -1318,7 +1322,7 @@ class OrdersService {
             updatedStatusStatistics.unshift({
                 name: "قيد التوصيل",
                 status: "WITH_RECEIVING_AGENT",
-                icon: newStatusStatistics.find((status) => status.status === "WITH_RECEIVING_AGENT")?.icon || "",
+                icon: (0, orders_responses_1.getStatusIcon)(data.loggedInUser.companyID, orders_responses_1.OrderStatusData["WITH_RECEIVING_AGENT"].icon),
                 count: dCount,
                 totalCost: dtotal,
                 inside: true,
@@ -1326,8 +1330,7 @@ class OrdersService {
             updatedStatusStatistics.unshift({
                 name: "قيد الارسال",
                 status: "REGISTERED",
-                icon: newStatusStatistics.find((status) => status.status === "REGISTERED")
-                    ?.icon || "",
+                icon: (0, orders_responses_1.getStatusIcon)(data.loggedInUser.companyID, orders_responses_1.OrderStatusData["REGISTERED"].icon),
                 count: rCount,
                 totalCost: rTotal,
                 inside: true,
